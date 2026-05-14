@@ -555,10 +555,6 @@ tr:hover td { background: #fbfdff; }
 /* Compact mode */
 .table-compact td { padding: 6px 8px !important; font-size: 12px !important; }
 .table-compact th { padding: 6px 8px !important; font-size: 10px !important; }
-  flex: 1;
-  padding: 8px 0;
-  overflow-y: auto;
-}
 .nav-section {
   margin-bottom: 2px;
 }
