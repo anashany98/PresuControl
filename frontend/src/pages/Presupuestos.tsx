@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { Columns3, Download, Plus, RefreshCw, RotateCcw } from 'lucide-react'
 import { PageHeader } from '../components/PageHeader'
 import { PriorityBadge, StateBadge } from '../components/Badges'
+import { SkeletonTable } from '../components/Skeleton'
 import { ESTADOS, api, euro, exportUrl, fmtDate, type PaginatedPresupuestos, type Presupuesto } from '../utils/api'
 import { useData } from '../utils/useData'
 
@@ -58,7 +59,7 @@ export function Presupuestos() {
       </div>
       {data && <div className="summary-strip"><span><strong>{data.total}</strong> presupuestos</span><span><strong>{euro(data.importe_total)}</strong> importe filtrado</span><span>Página {data.page} de {data.total_pages}</span></div>}
       {error && <div className="error">{error}</div>}
-      {loading ? <div className="card">Cargando presupuestos...</div> : <PresupuestosTable rows={rows} has={has} compact={compact} />}
+      {loading ? <SkeletonTable rows={6} /> : <PresupuestosTable rows={rows} has={has} compact={compact} />}
       {data && <div className="pager"><button className="btn secondary" disabled={data.page <= 1} onClick={() => set('page', String(data.page - 1))}>Anterior</button><button className="btn secondary" disabled={data.page >= data.total_pages} onClick={() => set('page', String(data.page + 1))}>Siguiente</button></div>}
     </>
   )

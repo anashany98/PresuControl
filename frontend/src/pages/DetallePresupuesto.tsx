@@ -4,8 +4,10 @@ import { Archive, ArrowLeft, CheckCircle2, MessageSquarePlus, PackageCheck, Refr
 import { PageHeader } from '../components/PageHeader'
 import { PresupuestoForm } from '../components/PresupuestoForm'
 import { PriorityBadge, StateBadge } from '../components/Badges'
+import { SkeletonCard } from '../components/Skeleton'
 import { api, fmtDate, isoDate, type Presupuesto } from '../utils/api'
 import { useData } from '../utils/useData'
+import { useToast } from '../utils/toast'
 
 type Comentario = { id: number; comentario: string; nombre_opcional?: string; usuario_nombre?: string; usuario_email?: string; creado_en: string }
 type Historial = { id: number; campo: string; valor_anterior?: string; valor_nuevo?: string; descripcion: string; nombre_opcional?: string; usuario_nombre?: string; usuario_email?: string; creado_en: string }
@@ -22,8 +24,9 @@ export function DetallePresupuesto() {
   const [quickAction, setQuickAction] = useState<string | null>(null)
   const [archiveReason, setArchiveReason] = useState('')
   const [showArchive, setShowArchive] = useState(false)
+  const toast = useToast()
 
-  if (loading) return <div className="card">Cargando ficha...</div>
+  if (loading) return <SkeletonCard />
   if (error || !data) return <div className="error">{error || 'No encontrado'}</div>
 
   async function save() {
@@ -34,7 +37,8 @@ export function DetallePresupuesto() {
       const updated = await api.patch<Presupuesto>(`/presupuestos/${id}`, { ...current, expected_version: current.version })
       setData(updated)
       reload(); history.reload()
-    } catch (e) { setSaveError(e instanceof Error ? e.message : String(e)) }
+      toast.success('Presupuesto guardado correctamente')
+    } catch (e) { setSaveError(e instanceof Error ? e.message : String(e)); toast.error('Error al guardar') }
   }
   async function addComment() {
     if (!comment.trim()) return

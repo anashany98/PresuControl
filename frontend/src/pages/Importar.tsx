@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { UploadCloud } from 'lucide-react'
 import { PageHeader } from '../components/PageHeader'
 import { api } from '../utils/api'
+import { useToast } from '../utils/toast'
 
 type Preview = {
   total_filas: number
@@ -22,6 +23,7 @@ export function Importar() {
   const [preview, setPreview] = useState<Preview | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const toast = useToast()
   async function send(path: string) {
     if (!file) return
     const fd = new FormData(); fd.append('file', file)
@@ -29,8 +31,11 @@ export function Importar() {
     try {
       const result = await api.post<any>(`${path}?mode=${mode}`, fd)
       if (path.includes('preview')) setPreview(result)
-      else setMessage(`Importación completada. Insertados: ${result.insertados}. Actualizados: ${result.actualizados || 0}. Omitidos: ${result.omitidos?.length || 0}.`)
-    } catch (e) { setError(e instanceof Error ? e.message : String(e)) }
+      else {
+        setMessage(`Importación completada. Insertados: ${result.insertados}. Actualizados: ${result.actualizados || 0}. Omitidos: ${result.omitidos?.length || 0}.`)
+        toast.success(`Importación completada. Insertados: ${result.insertados}, Actualizados: ${result.actualizados || 0}`)
+      }
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)); toast.error('Error en importación') }
   }
   return <>
     <PageHeader title="Importar" subtitle="Importación avanzada desde Excel o CSV con simulación, duplicados y actualización segura por versión." />

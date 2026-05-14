@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { PageHeader } from '../components/PageHeader'
 import { PriorityBadge } from '../components/Badges'
+import { SkeletonCard } from '../components/Skeleton'
 import { api, ESTADOS, euro, fmtDate, isoDate, type Presupuesto } from '../utils/api'
 import { useData } from '../utils/useData'
 import { Link } from 'react-router-dom'
@@ -63,7 +64,7 @@ export function Kanban() {
     <PageHeader title="Kanban" subtitle="Mueve tarjetas entre estados. Si el estado exige datos, se abre una ventana guiada antes de guardar." />
     {msg && <div className="error" style={{ marginBottom: 14 }}>{msg}</div>}
     {error && <div className="error">{error}</div>}
-    {loading ? <div className="card">Cargando kanban...</div> : <div className="kanban">
+    {loading ? <SkeletonCard /> : <div className="kanban">
       {columns.map(col => <div className="kanban-col" key={col} onDragOver={e => e.preventDefault()} onDrop={() => drop(col)}>
         <h3>{col} <span className="muted">{(data || []).filter(p => p.estado === col).length}</span></h3>
         {(data || []).filter(p => p.estado === col).map(p => <div className="kanban-card" key={p.id} draggable onDragStart={() => setDragId(p.id)}>

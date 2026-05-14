@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { PageHeader } from '../components/PageHeader'
 import { StatCard } from '../components/StatCard'
 import { PriorityBadge, StateBadge } from '../components/Badges'
+import { SkeletonCard } from '../components/Skeleton'
 import { api, euro, fmtDate, type Presupuesto } from '../utils/api'
 import { useData } from '../utils/useData'
 
@@ -13,7 +14,7 @@ type DashboardData = {
 
 export function Dashboard() {
   const { data, loading, error } = useData<DashboardData>(() => api.get('/dashboard'), [])
-  if (loading) return <div className="card">Cargando dashboard...</div>
+  if (loading) return <SkeletonCard />
   if (error) return <div className="error">{error}</div>
   const cards = data!.cards
   return (

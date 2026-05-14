@@ -26,6 +26,7 @@ import { Buscar } from './pages/Buscar'
 import { PasswordRequest, PasswordReset } from './pages/PasswordReset'
 import { Notificaciones } from './pages/Notificaciones'
 import { AuthProvider, useAuth } from './utils/auth'
+import { ToastProvider } from './utils/toast'
 
 function ProtectedLayout() {
   const { user, loading } = useAuth()
@@ -64,6 +65,6 @@ const router = createBrowserRouter([
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <AuthProvider><RouterProvider router={router} /></AuthProvider>
+    <AuthProvider><ToastProvider><RouterProvider router={router} /></ToastProvider></AuthProvider>
   </React.StrictMode>
 )

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Bell, BellRing, Check, CheckCheck } from 'lucide-react'
 import { PageHeader } from '../components/PageHeader'
 import { Link } from 'react-router-dom'
+import { SkeletonCard } from '../components/Skeleton'
 import { api, fmtDate } from '../utils/api'
 import { useData } from '../utils/useData'
 
@@ -60,7 +61,7 @@ export function Notificaciones() {
       <button className={`btn secondary small ${filter === 'todas' ? 'active' : ''}`} onClick={() => setFilter('todas')}>Todas</button>
       <button className={`btn secondary small ${filter === 'sin-leer' ? 'active' : ''}`} onClick={() => setFilter('sin-leer')}>Sin leer {data?.sin_leer ? `(${data.sin_leer})` : ''}</button>
     </div>
-    {loading ? <div className="card">Cargando...</div> : !filtered.length ? <div className="card">No hay notificaciones.</div> : (
+    {loading ? <SkeletonCard /> : !filtered.length ? <div className="card">No hay notificaciones.</div> : (
       <div className="compact-list">
         {filtered.map(n => (
           <div key={n.id} className={`compact-row${n.leida ? '' : ' unread'}`}>

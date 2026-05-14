@@ -1,6 +1,7 @@
 import { BriefcaseBusiness, RefreshCw } from 'lucide-react'
 import { PageHeader } from '../components/PageHeader'
 import { PresupuestosTable } from './Presupuestos'
+import { SkeletonTable } from '../components/Skeleton'
 import { api, type Presupuesto } from '../utils/api'
 import { useData } from '../utils/useData'
 
@@ -23,6 +24,6 @@ export function MiMesa() {
       <div className="card"><strong>{r?.incidencias || 0}</strong><p className="muted">Incidencias</p></div>
     </div>
     {error && <div className="error">{error}</div>}
-    {loading ? <div className="card">Cargando...</div> : <PresupuestosTable rows={data?.items || []} compact />}
+    {loading ? <SkeletonTable rows={6} /> : <PresupuestosTable rows={data?.items || []} compact />}
   </>
 }
