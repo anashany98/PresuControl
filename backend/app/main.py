@@ -145,6 +145,13 @@ def require_system_manager(request: Request):
         raise HTTPException(status_code=403, detail="Solo un usuario con gestión del sistema puede hacer esta acción.")
 
 
+def get_current_user(request: Request) -> Usuario:
+    user = getattr(request.state, "user", None)
+    if not user:
+        raise HTTPException(status_code=401, detail="No autenticado")
+    return user
+
+
 def enforce_login_rate_limit(email: str, request: Request, db: Session):
     max_attempts = int(os.getenv("LOGIN_RATE_LIMIT_ATTEMPTS", "5"))
     minutes = int(os.getenv("LOGIN_RATE_LIMIT_WINDOW_MINUTES", "10"))
@@ -1022,9 +1029,7 @@ def export_logs_actividad(request: Request, db: Session = Depends(get_db)):
 
 
 @app.get("/notificaciones")
-def get_notificaciones(only_unread: bool = False, limit: int = 50, db: Session = Depends(get_db), user: Usuario = Depends(lambda: None)):
-    if not user:
-        raise HTTPException(status_code=401, detail="No autenticado")
+def get_notificaciones(only_unread: bool = False, limit: int = 50, db: Session = Depends(get_db), user: Usuario = Depends(get_current_user)):
     notifications = obtener_notificaciones(db, user.id, unread_only=only_unread, limit=limit)
     unread_count = contar_sin_leer(db, user.id)
     return {
@@ -1045,18 +1050,14 @@ def get_notificaciones(only_unread: bool = False, limit: int = 50, db: Session =
     }
 
 @app.post("/notificaciones/{notification_id}/leer")
-def mark_notification_read(notification_id: int, db: Session = Depends(get_db), user: Usuario = Depends(lambda: None)):
-    if not user:
-        raise HTTPException(status_code=401, detail="No autenticado")
+def mark_notification_read(notification_id: int, db: Session = Depends(get_db), user: Usuario = Depends(get_current_user)):
     success = marcar_leida(db, notification_id, user.id)
     if not success:
         raise HTTPException(status_code=404, detail="Notificación no encontrada")
     return {"ok": True}
 
 @app.post("/notificaciones/marcar-todas-leidas")
-def mark_all_read(db: Session = Depends(get_db), user: Usuario = Depends(lambda: None)):
-    if not user:
-        raise HTTPException(status_code=401, detail="No autenticado")
+def mark_all_read(db: Session = Depends(get_db), user: Usuario = Depends(get_current_user)):
     count = marcar_todas_leidas(db, user.id)
     return {"marcadas": count}
 
