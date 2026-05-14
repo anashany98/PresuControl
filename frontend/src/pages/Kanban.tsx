@@ -67,12 +67,34 @@ export function Kanban() {
     {loading ? <SkeletonCard /> : <div className="kanban">
       {columns.map(col => <div className="kanban-col" key={col} onDragOver={e => e.preventDefault()} onDrop={() => drop(col)}>
         <h3>{col} <span className="muted">{(data || []).filter(p => p.estado === col).length}</span></h3>
-        {(data || []).filter(p => p.estado === col).map(p => <div className="kanban-card" key={p.id} draggable onDragStart={() => setDragId(p.id)}>
-          <Link to={`/presupuestos/${p.id}`}><strong>{p.numero_presupuesto}</strong></Link>
-          <div>{p.cliente}</div>
-          <div className="meta"><span>{euro(p.importe)}</span><span>Gestor: {p.gestor}</span><span>Resp.: {p.responsable_actual || '—'}</span><span>Vence: {fmtDate(p.fecha_limite_siguiente_accion)}</span><span>v{p.version}</span></div>
-          <PriorityBadge value={p.prioridad_calculada}/>
-        </div>)}
+        {(data || []).filter(p => p.estado === col).map(p => {
+          const pri = (p.prioridad_calculada || 'verde').toLowerCase()
+          return (
+            <div key={p.id} className={`kanban-card priority-${pri}`} draggable onDragStart={() => setDragId(p.id)}>
+              <div className="kanban-card-header">
+                <span className="kanban-card-num">{p.numero_presupuesto}</span>
+                <span className="kanban-card-version">v{p.version}</span>
+              </div>
+              <div className="kanban-card-cliente">{p.cliente}</div>
+              <div className="kanban-card-ref">{p.obra_referencia}</div>
+              <div className="kanban-card-divider" />
+              <div className="kanban-card-footer">
+                <span className="importe">{euro(p.importe)}</span>
+                <div className="meta">
+                  <span>📅 {fmtDate(p.fecha_limite_siguiente_accion)}</span>
+                  <span>{p.gestor.split(' ')[0]}</span>
+                </div>
+              </div>
+              <div className="kanban-card-tooltip">
+                <div>Responsável: {p.responsable_actual || '—'}</div>
+                <div>Dias parado: {p.dias_parado}</div>
+                {p.incidencia && <div style={{color:'#f87171'}}>⚠ Incidencia abierta</div>}
+                {p.siguiente_accion && <div>Próxima: {p.siguiente_accion}</div>}
+              </div>
+              <Link to={`/presupuestos/${p.id}`} style={{ position: 'absolute', inset: 0 }} onClick={(e) => e.stopPropagation()} />
+            </div>
+          )
+        })}
       </div>)}
     </div>}
     {target && <KanbanModal presupuesto={target.presupuesto} status={target.status} onClose={() => setTarget(null)} onSubmit={apply} />}
