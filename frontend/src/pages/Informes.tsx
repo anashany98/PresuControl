@@ -1,5 +1,6 @@
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { Download, PageHeader } from '../components/PageHeader'
+import { Download } from 'lucide-react'
+import { PageHeader } from '../components/PageHeader'
 import { StatCard } from '../components/StatCard'
 import { AlertTriangle, Clock3, Euro, TrendingUp } from 'lucide-react'
 import { api, euro } from '../utils/api'
@@ -19,7 +20,8 @@ type Report = {
 
 async function downloadExcel() {
   try {
-    const res = await fetch('/api/reports/export', { headers: { ...api.authHeaders() } })
+    const token = localStorage.getItem('presucontrol_token')
+    const res = await fetch('/api/reports/export', { headers: { Authorization: `Bearer ${token}` } })
     const blob = await res.blob()
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
