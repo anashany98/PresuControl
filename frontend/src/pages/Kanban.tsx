@@ -3,6 +3,7 @@ import { PageHeader } from '../components/PageHeader'
 import { PriorityBadge } from '../components/Badges'
 import { SkeletonCard } from '../components/Skeleton'
 import { api, ESTADOS, euro, fmtDate, isoDate, type Presupuesto } from '../utils/api'
+import { useAuth } from '../utils/auth'
 import { useData } from '../utils/useData'
 import { Link } from 'react-router-dom'
 
@@ -102,6 +103,7 @@ export function Kanban() {
 }
 
 function KanbanModal({ presupuesto, status, onClose, onSubmit }: { presupuesto: Presupuesto; status: string; onClose: () => void; onSubmit: (payload: KanbanPayload) => void }) {
+  const { user } = useAuth()
   const action = actionByStatus[status]
   const [payload, setPayload] = useState<KanbanPayload>({
     action: action || 'direct_status',
@@ -113,7 +115,7 @@ function KanbanModal({ presupuesto, status, onClose, onSubmit }: { presupuesto: 
     fecha_pedido_proveedor: isoDate(presupuesto.fecha_pedido_proveedor) || new Date().toISOString().slice(0, 10),
     plazo_proveedor: isoDate(presupuesto.plazo_proveedor),
     fecha_prevista_entrega: isoDate(presupuesto.fecha_prevista_entrega),
-    responsable_actual: presupuesto.responsable_actual || '',
+    responsable_actual: user?.nombre || presupuesto.responsable_actual || '',
     siguiente_accion: presupuesto.siguiente_accion || '',
     fecha_limite_siguiente_accion: isoDate(presupuesto.fecha_limite_siguiente_accion) || new Date().toISOString().slice(0, 10),
     descripcion_incidencia: presupuesto.descripcion_incidencia || '',

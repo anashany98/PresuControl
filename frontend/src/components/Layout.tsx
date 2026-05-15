@@ -68,6 +68,21 @@ export function Layout() {
     return () => window.removeEventListener('resize', check)
   }, [])
 
+  useEffect(() => {
+    function handleKeydown(e: KeyboardEvent) {
+      if (e.key === '/' && !(e.target instanceof HTMLInputElement) && !(e.target instanceof HTMLTextAreaElement)) {
+        e.preventDefault()
+        document.querySelector<HTMLInputElement>('.search-global input')?.focus()
+      }
+      if (e.key === 'n' && !(e.target instanceof HTMLInputElement) && !(e.target instanceof HTMLTextAreaElement)) {
+        e.preventDefault()
+        navigate('/nuevo')
+      }
+    }
+    window.addEventListener('keydown', handleKeydown)
+    return () => window.removeEventListener('keydown', handleKeydown)
+  }, [navigate])
+
   function submit(e: FormEvent) {
     e.preventDefault()
     if (q.trim()) navigate(`/buscar?q=${encodeURIComponent(q.trim())}`)
@@ -145,7 +160,7 @@ export function Layout() {
         <div className="topbar">
           <form className="search-global" onSubmit={submit}>
             <Search size={18} />
-            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar nº presupuesto, cliente, obra..." />
+            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar nº presupuesto, cliente, obra... (pulsa /)" title="Pulsa / para buscar" />
           </form>
         </div>
         <Outlet />

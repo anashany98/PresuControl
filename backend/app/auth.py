@@ -14,7 +14,9 @@ from .models import Usuario
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-SECRET_KEY = os.getenv("JWT_SECRET_KEY", "presucontrol-change-this-secret")
+SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+if not SECRET_KEY:
+    raise RuntimeError("JWT_SECRET_KEY environment variable is required but not set")
 ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "720"))
 AUTH_ENABLED = os.getenv("AUTH_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
@@ -62,11 +64,14 @@ def get_authenticated_user_from_request(request: Request, db: Session) -> Usuari
     elif request.query_params.get("access_token"):
         raw_token = request.query_params.get("access_token")
     if not raw_token:
-        raise HTTPException(status_code=401, detail="No autenticado.")
-    payload = decode_token(raw_token)
+        raise HTTPException(status_code=401, detail="No autenticado: falta token de acceso.")
+    try:
+        payload = decode_token(raw_token)
+    except HTTPException:
+        raise HTTPException(status_code=401, detail="Sesión inválida o caducada. Haz logout y login de nuevo.")
     email = payload.get("sub")
     if not email:
-        raise HTTPException(status_code=401, detail="Token sin usuario.")
+        raise HTTPException(status_code=401, detail="Token sin usuario válido.")
     user = db.query(Usuario).filter(Usuario.email == email, Usuario.activo == True, Usuario.aprobado == True).first()  # noqa: E712
     if not user:
         raise HTTPException(status_code=401, detail="Usuario no encontrado, desactivado o pendiente de aceptación.")

@@ -302,11 +302,13 @@ def reset_password(payload: PasswordResetConfirm, db: Session = Depends(get_db))
 
 @app.get("/auth/me", response_model=UserOut)
 def me(request: Request, db: Session = Depends(get_db)):
-    user = getattr(request.state, "user", None)
-    if user:
-        return user
-    # AUTH_ENABLED=false: devolver usuario técnico para desarrollo.
-    return Usuario(id=0, nombre="Modo sin login", email="dev@local", hashed_password="", activo=True, aprobado=True, puede_gestionar_sistema=True, creado_en=datetime.now(timezone.utc))
+    try:
+        user = get_authenticated_user_from_request(request, db)
+        if user:
+            return user
+    except HTTPException:
+        pass
+    return JSONResponse(status_code=401, content={"detail": "No autenticado. Haz logout y login de nuevo."})
 
 @app.get("/usuarios", response_model=list[UserOut])
 def list_usuarios(request: Request, db: Session = Depends(get_db)):
@@ -529,6 +531,18 @@ def apply_sort(query, sort_by: str | None, sort_dir: str | None):
 def health():
     return {"status": "ok", "service": "PresuControl"}
 
+@app.get("/debug/ping")
+def debug_ping():
+    return {"status": "ok", "message": "Backend is responding"}
+
+@app.get("/debug/verify-login")
+def debug_verify_login(request: Request, db: Session = Depends(get_db)):
+    try:
+        user = get_authenticated_user_from_request(request, db)
+        return {"ok": True, "user": user.email if user else None}
+    except HTTPException as e:
+        return {"ok": False, "error": e.detail}
+
 @app.get("/settings", response_model=SettingsOut)
 def read_settings(db: Session = Depends(get_db)):
     return get_settings(db)
@@ -702,7 +716,11 @@ def quick_action(presupuesto_id: int, payload: QuickAction, request: Request, db
     elif action == "marcar_aceptado":
         obj.estado = "Aceptado - pendiente pedido proveedor"
         obj.fecha_aceptacion = payload.fecha_aceptacion or obj.fecha_aceptacion or date.today()
-        obj.responsable_actual = payload.responsable_actual or obj.responsable_actual or "Compras"
+        actor_name = actor_label(actor)
+        if not payload.responsable_actual or payload.responsable_actual == "Compras":
+            obj.responsable_actual = actor_name or "Compras"
+        else:
+            obj.responsable_actual = payload.responsable_actual
         obj.siguiente_accion = payload.siguiente_accion or obj.siguiente_accion or "Hacer pedido proveedor"
         obj.fecha_limite_siguiente_accion = payload.fecha_limite_siguiente_accion or obj.fecha_limite_siguiente_accion or date.today()
     elif action == "crear_pedido_proveedor":
@@ -711,7 +729,11 @@ def quick_action(presupuesto_id: int, payload: QuickAction, request: Request, db
         obj.proveedor = payload.proveedor or obj.proveedor
         obj.numero_pedido_proveedor = payload.numero_pedido_proveedor or obj.numero_pedido_proveedor
         obj.fecha_pedido_proveedor = payload.fecha_pedido_proveedor or obj.fecha_pedido_proveedor or date.today()
-        obj.responsable_actual = payload.responsable_actual or obj.responsable_actual or "Compras"
+        actor_name = actor_label(actor)
+        if not payload.responsable_actual or payload.responsable_actual == "Compras":
+            obj.responsable_actual = actor_name or "Compras"
+        else:
+            obj.responsable_actual = payload.responsable_actual
         obj.siguiente_accion = payload.siguiente_accion or obj.siguiente_accion or "Confirmar plazo proveedor"
         obj.fecha_limite_siguiente_accion = payload.fecha_limite_siguiente_accion or obj.fecha_limite_siguiente_accion
     elif action == "confirmar_plazo":
@@ -1156,6 +1178,22 @@ def avisos(db: Session = Depends(get_db)):
     return build_alerts(db)
 
 
+@app.get("/avisos/historial")
+def avisos_historial(db: Session = Depends(get_db)):
+    rows = db.query(EmailNotificationLog).order_by(desc(EmailNotificationLog.creado_en)).limit(200).all()
+    return [{
+        "id": r.id,
+        "tipo": r.tipo,
+        "presupuesto_id": r.presupuesto_id,
+        "numero_presupuesto": r.presupuesto.presupuesto if r.presupuesto else str(r.presupuesto_id),
+        "cliente": r.presupuesto.cliente if r.presupuesto else "",
+        "prioridad_calculada": r.presupuesto.prioridad_calculada if r.presupuesto else "",
+        "enviado_a": r.sent_to,
+        "enviado_en": r.creado_en.isoformat() if r.creado_en else None,
+        "status": r.status,
+    } for r in rows]
+
+
 @app.post("/avisos/email-digest")
 def avisos_email_digest(db: Session = Depends(get_db), only_critical: bool = False):
     return send_alert_digest(db, only_critical=only_critical)
@@ -1229,6 +1267,97 @@ def reports(db: Session = Depends(get_db)):
             "bloqueados": len([r for r in rows if r.estado == "Bloqueado / incidencia" or r.incidencia]),
         }
     }
+
+
+@app.get("/reports/export")
+def export_reports(db: Session = Depends(get_db)):
+    rows = base_query(db).all()
+    settings = get_settings(db)
+    for r in rows:
+        r.prioridad_calculada, r.dias_parado = calculate_risk(r, db, settings)
+    db.commit()
+
+    accepted_no_order = [r for r in rows if r.fecha_aceptacion and not r.pedido_proveedor_realizado]
+    accepted_with_order = [r for r in rows if r.fecha_aceptacion and r.fecha_pedido_proveedor]
+    avg_days = round(sum((r.fecha_pedido_proveedor - r.fecha_aceptacion).days for r in accepted_with_order) / len(accepted_with_order), 1) if accepted_with_order else 0
+
+    accepted_by_month: dict[str, int] = {}
+    cancelled_by_month: dict[str, int] = {}
+    for r in rows:
+        if r.fecha_aceptacion:
+            key = r.fecha_aceptacion.strftime("%Y-%m")
+            accepted_by_month[key] = accepted_by_month.get(key, 0) + 1
+        if r.estado == "Cancelado / rechazado" and r.actualizado_en:
+            key = r.actualizado_en.strftime("%Y-%m")
+            cancelled_by_month[key] = cancelled_by_month.get(key, 0) + 1
+
+    output = io.BytesIO()
+    workbook_formats = {}
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        workbook = writer.book
+        header_format = workbook.add_format({"bold": True, "bg_color": "#F3F4F6", "border": 1})
+        money_format = workbook.add_format({"num_format": "#,##0.00€"})
+        date_format = workbook.add_format({"num_format": "yyyy-mm-dd"})
+        int_format = workbook.add_format({"num_format": "#,##0"})
+
+        ws_summary = writer.sheets.get("Resumen", None)
+        if ws_summary is None:
+            ws_summary = workbook.add_worksheet("Resumen")
+
+        ws_summary.write(0, 0, "Métrica", header_format)
+        ws_summary.write(0, 1, "Valor", header_format)
+        ws_summary.write(1, 0, "Importe aceptado pendiente pedido")
+        ws_summary.write(1, 1, round(sum(r.importe for r in accepted_no_order), 2), money_format)
+        ws_summary.write(2, 0, "Días medios aceptación a pedido")
+        ws_summary.write(2, 1, avg_days, int_format)
+        ws_summary.write(3, 0, "Presupuestos bloqueados")
+        ws_summary.write(3, 1, len([r for r in rows if r.estado == "Bloqueado / incidencia" or r.incidencia]), int_format)
+        ws_summary.set_column(0, 0, 40)
+        ws_summary.set_column(1, 1, 20)
+
+        df_estado = pd.DataFrame([{"Estado": k, "Cantidad": v} for k, v in {getattr(r, "estado", "Sin definir"): 1 for r in rows}.items()])
+        df_estado.to_excel(writer, index=False, sheet_name="Por Estado", startrow=1)
+        ws_estado = writer.sheets["Por Estado"]
+        for idx, col in enumerate(df_estado.columns):
+            ws_estado.write(0, idx, col, header_format)
+        ws_estado.set_column(0, 0, 30)
+        ws_estado.set_column(1, 1, 15)
+
+        df_aceptados = pd.DataFrame([{"Mes": k, "Aceptados": v} for k, v in sorted(accepted_by_month.items())])
+        df_aceptados.to_excel(writer, index=False, sheet_name="Aceptados por Mes", startrow=1)
+        ws_aceptados = writer.sheets["Aceptados por Mes"]
+        for idx, col in enumerate(df_aceptados.columns):
+            ws_aceptados.write(0, idx, col, header_format)
+        ws_aceptados.set_column(0, 0, 15)
+        ws_aceptados.set_column(1, 1, 15)
+
+        df_cancelados = pd.DataFrame([{"Mes": k, "Cancelados": v} for k, v in sorted(cancelled_by_month.items())])
+        df_cancelados.to_excel(writer, index=False, sheet_name="Cancelados por Mes", startrow=1)
+        ws_cancelados = writer.sheets["Cancelados por Mes"]
+        for idx, col in enumerate(df_cancelados.columns):
+            ws_cancelados.write(0, idx, col, header_format)
+        ws_cancelados.set_column(0, 0, 15)
+        ws_cancelados.set_column(1, 1, 15)
+
+        df_gestor = pd.DataFrame([{"Gestor": getattr(r, "gestor", "Sin definir") or "Sin definir", "Cantidad": 1} for r in rows]).groupby("Gestor", as_index=False).sum()
+        df_gestor.to_excel(writer, index=False, sheet_name="Por Gestor", startrow=1)
+        ws_gestor = writer.sheets["Por Gestor"]
+        for idx, col in enumerate(df_gestor.columns):
+            ws_gestor.write(0, idx, col, header_format)
+        ws_gestor.set_column(0, 0, 25)
+        ws_gestor.set_column(1, 1, 15)
+
+        df_proveedor = pd.DataFrame([{"Proveedor": getattr(r, "proveedor", "Sin definir") or "Sin definir", "Cantidad": 1} for r in rows]).groupby("Proveedor", as_index=False).sum()
+        df_proveedor.to_excel(writer, index=False, sheet_name="Por Proveedor", startrow=1)
+        ws_proveedor = writer.sheets["Por Proveedor"]
+        for idx, col in enumerate(df_proveedor.columns):
+            ws_proveedor.write(0, idx, col, header_format)
+        ws_proveedor.set_column(0, 0, 25)
+        ws_proveedor.set_column(1, 1, 15)
+
+    output.seek(0)
+    return StreamingResponse(output, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": "attachment; filename=presucontrol_informe.xlsx"})
+
 
 def prepare_export_rows(rows: list[Presupuesto]) -> list[dict[str, Any]]:
     return [{

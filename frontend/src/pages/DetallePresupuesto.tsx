@@ -6,6 +6,7 @@ import { PresupuestoForm } from '../components/PresupuestoForm'
 import { PriorityBadge, StateBadge } from '../components/Badges'
 import { SkeletonCard } from '../components/Skeleton'
 import { api, fmtDate, isoDate, type Presupuesto } from '../utils/api'
+import { useAuth } from '../utils/auth'
 import { useData } from '../utils/useData'
 import { useToast } from '../utils/toast'
 
@@ -110,6 +111,7 @@ export function DetallePresupuesto() {
 }
 
 function QuickActionModal({ action, base, onClose, onSubmit }: { action: string; base: Presupuesto; onClose: () => void; onSubmit: (payload: QuickPayload) => void }) {
+  const { user } = useAuth()
   const [payload, setPayload] = useState<QuickPayload>({
     action,
     fecha_envio_cliente: isoDate(base.fecha_envio_cliente) || new Date().toISOString().slice(0, 10),
@@ -119,7 +121,7 @@ function QuickActionModal({ action, base, onClose, onSubmit }: { action: string;
     fecha_pedido_proveedor: isoDate(base.fecha_pedido_proveedor) || new Date().toISOString().slice(0, 10),
     plazo_proveedor: isoDate(base.plazo_proveedor),
     fecha_prevista_entrega: isoDate(base.fecha_prevista_entrega),
-    responsable_actual: base.responsable_actual || '',
+    responsable_actual: user?.nombre || base.responsable_actual || '',
     siguiente_accion: base.siguiente_accion || '',
     fecha_limite_siguiente_accion: isoDate(base.fecha_limite_siguiente_accion) || new Date().toISOString().slice(0, 10),
     descripcion_incidencia: base.descripcion_incidencia || '',
