@@ -6,6 +6,7 @@ import { PriorityBadge } from '../components/Badges'
 import { SkeletonTable } from '../components/Skeleton'
 import { api, euro, type Presupuesto } from '../utils/api'
 import { useData } from '../utils/useData'
+import { PedidoSummaryBadge } from '../components/PedidoSummary'
 
 type MiMesaResponse = {
   usuario: { id?: number; nombre?: string; email?: string }
@@ -49,6 +50,7 @@ function SwipeableCard({ item }: { item: Presupuesto }) {
         <span>{item.gestor}</span>
         <span className="mobile-importe">{euro(item.importe)}</span>
       </div>
+      <PedidoSummaryBadge presupuesto={item} variant="mini" />
       <div className="mobile-card-footer">
         <CountdownTimer dateStr={item.fecha_limite_siguiente_accion} />
         <span>{item.estado}</span>

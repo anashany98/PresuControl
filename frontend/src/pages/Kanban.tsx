@@ -1,12 +1,13 @@
 import { useState, type ReactNode } from 'react'
 import { PageHeader } from '../components/PageHeader'
-import { PriorityBadge } from '../components/Badges'
 import { SkeletonCard } from '../components/Skeleton'
 import { api, ESTADOS, euro, fmtDate, isoDate, type Presupuesto } from '../utils/api'
 import { useAuth } from '../utils/auth'
 import { useData } from '../utils/useData'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useToast } from '../utils/toast'
+import { PedidoSummaryBadge } from '../components/PedidoSummary'
+import { PedidoSummaryPanel } from '../components/PedidoSummaryPanel'
 
 const columns = ESTADOS.filter(s => s !== 'Pendiente de enviar')
 
@@ -41,11 +42,15 @@ const actionByStatus: Record<string, string | null> = {
 
 export function Kanban() {
   const { data, loading, error, reload } = useData<Presupuesto[]>(() => api.get('/presupuestos?limit=2000&ocultar_cerrados=false'), [])
+  const [params] = useSearchParams()
   const [dragId, setDragId] = useState<number | null>(null)
   const [target, setTarget] = useState<{ presupuesto: Presupuesto; status: string } | null>(null)
+  const [pedidoPanel, setPedidoPanel] = useState<Presupuesto | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const toast = useToast()
+  const focusId = Number(params.get('focus') || 0) || null
+  const panelPresupuesto = pedidoPanel ? (data || []).find(p => p.id === pedidoPanel.id) || pedidoPanel : null
   function drop(status: string) {
     const presupuesto = (data || []).find(p => p.id === dragId)
     if (!presupuesto || presupuesto.estado === status) return
@@ -90,9 +95,9 @@ export function Kanban() {
         {(data || []).filter(p => p.estado === col).map(p => {
           const pri = (p.prioridad_calculada || 'verde').toLowerCase()
           return (
-            <div key={p.id} className={`kanban-card priority-${pri}`} draggable onDragStart={() => setDragId(p.id)}>
+            <div key={p.id} className={`kanban-card priority-${pri} ${focusId === p.id ? 'focused' : ''}`} draggable onDragStart={() => setDragId(p.id)}>
               <div className="kanban-card-header">
-                <span className="kanban-card-num">{p.numero_presupuesto}</span>
+                <Link to={`/presupuestos/${p.id}`} className="kanban-card-num">{p.numero_presupuesto}</Link>
                 <span className="kanban-card-version">v{p.version}</span>
               </div>
               <div className="kanban-card-cliente">{p.cliente}</div>
@@ -105,20 +110,7 @@ export function Kanban() {
                   <span>{p.gestor.split(' ')[0]}</span>
                 </div>
               </div>
-              {(p.pedidos?.length ?? 0) > 0 && (
-                <div style={{ borderTop: '1px solid #e5e7eb', marginTop: 8, paddingTop: 8 }}>
-                  <div style={{ fontSize: 10, color: '#6b7280', fontWeight: 700, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Pedidos proveedor</div>
-                  {p.pedidos!.map(pedido => (
-                    <div key={pedido.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11, marginBottom: 2 }}>
-                      <span style={{ color: '#374151' }}>{pedido.numero_pedido || '—'}</span>
-                      <span style={{ 
-                        color: pedido.estado_entrega === 'completado' ? '#15803d' : pedido.estado_entrega === 'parcial' ? '#d97706' : '#6b7280',
-                        fontWeight: 600
-                      }}>{pedido.estado_entrega || 'pendiente'}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
+              <PedidoSummaryBadge presupuesto={p} variant="kanban" onClick={(e) => { e.stopPropagation(); setPedidoPanel(p) }} />
               {/* Keyboard accessible move buttons */}
               <div className="kanban-card-move-btns" style={{ display: 'flex', gap: 4, marginTop: 8 }}>
                 {columns.filter(c => c !== p.estado).slice(0, 2).map(nextStatus => (
@@ -132,13 +124,14 @@ export function Kanban() {
                   </button>
                 ))}
               </div>
-              <Link to={`/presupuestos/${p.id}`} style={{ position: 'absolute', inset: 0 }} onClick={(e) => e.stopPropagation()} />
+              <Link to={`/presupuestos/${p.id}`} className="kanban-card-link">Abrir detalle</Link>
             </div>
           )
         })}
       </div>)}
     </div>}
     {target && <KanbanModal presupuesto={target.presupuesto} status={target.status} onClose={() => setTarget(null)} onSubmit={apply} saving={saving} />}
+    {panelPresupuesto && <PedidoSummaryPanel presupuesto={panelPresupuesto} onClose={() => setPedidoPanel(null)} onUpdated={reload} />}
   </>
 }
 

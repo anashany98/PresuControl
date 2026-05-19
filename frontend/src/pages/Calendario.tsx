@@ -4,6 +4,7 @@ import { api, fmtDate, euro, type Presupuesto } from '../utils/api'
 import { useData } from '../utils/useData'
 import { Link } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, CalendarDays, X, ArrowRight, ExternalLink, Package, AlertTriangle, CheckCircle, Clock } from 'lucide-react'
+import { PedidoSummaryBadge } from '../components/PedidoSummary'
 
 type Evento = { date: string; type: string; tipo: 'limite' | 'plazo' | 'entrega' | 'enviado'; p: Presupuesto }
 
@@ -1013,6 +1014,7 @@ function PresupuestoModal({ presupuesto, onClose }: { presupuesto: Presupuesto; 
 
           <div className="cal-modal-section">
             <h3 className="cal-modal-section-title">Pedido proveedor</h3>
+            <PedidoSummaryBadge presupuesto={presupuesto} variant="detail" />
             <InfoRow
               icon={presupuesto.pedido_proveedor_realizado ? CheckCircle : Package}
               label="Pedido realizado"

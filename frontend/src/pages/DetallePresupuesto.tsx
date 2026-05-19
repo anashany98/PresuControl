@@ -10,6 +10,7 @@ import { useAuth } from '../utils/auth'
 import { useData } from '../utils/useData'
 import { ProveedorList } from '../components/ProveedorList'
 import { useToast } from '../utils/toast'
+import { PedidoSummaryBadge } from '../components/PedidoSummary'
 
 type Comentario = { id: number; comentario: string; nombre_opcional?: string; usuario_nombre?: string; usuario_email?: string; creado_en: string }
 type Historial = { id: number; campo: string; valor_anterior?: string; valor_nuevo?: string; descripcion: string; nombre_opcional?: string; usuario_nombre?: string; usuario_email?: string; creado_en: string }
@@ -157,6 +158,9 @@ export function DetallePresupuesto() {
           <button className="btn secondary small" onClick={() => { setEditingPedido(null); setShowPedidoForm(true) }}>
             <Plus size={14}/>Nuevo pedido
           </button>
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <PedidoSummaryBadge presupuesto={{ ...data, pedidos: pedidos.data || data.pedidos }} variant="detail" />
         </div>
         {pedidos.data?.length === 0 && <p className="muted">Sin pedidos registrados.</p>}
         {pedidos.data?.length !== 0 && (
@@ -390,4 +394,3 @@ function PedidoFormModal({ pedido, onClose, onSubmit }: { pedido: PedidoProveedo
     </div>
   )
 }
-  

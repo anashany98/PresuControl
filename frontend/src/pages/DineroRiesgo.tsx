@@ -5,6 +5,7 @@ import { StatCard } from '../components/StatCard'
 import { PriorityBadge, StateBadge } from '../components/Badges'
 import { api, euro, type Presupuesto } from '../utils/api'
 import { useData } from '../utils/useData'
+import { PedidoSummaryBadge } from '../components/PedidoSummary'
 
 type Bucket = { label: string; count: number; importe: number; items: Presupuesto[] }
 type Data = {
@@ -44,6 +45,7 @@ export function DineroRiesgo() {
             <div>
               <strong>{p.numero_presupuesto} · {p.cliente}</strong>
               <span>{euro(p.importe)} · {p.responsable_actual || 'Sin responsable'} · {p.siguiente_accion || 'Sin acción'}</span>
+              <PedidoSummaryBadge presupuesto={p} variant="mini" />
             </div>
             <div style={{ display: 'grid', gap: 6, justifyItems: 'end' }}>
               <PriorityBadge value={p.prioridad_calculada} />

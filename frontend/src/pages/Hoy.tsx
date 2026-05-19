@@ -7,6 +7,7 @@ import { api, euro, type Presupuesto } from '../utils/api'
 import { useToast } from '../utils/toast'
 import { useData } from '../utils/useData'
 import { useAuth } from '../utils/auth'
+import { PedidoSummaryBadge } from '../components/PedidoSummary'
 
 type SectionKey = 'hoy' | 'semana' | 'atrasados' | 'sin_accion'
 
@@ -59,7 +60,10 @@ function HoyItem({ p, onDone, done }: { p: Presupuesto; onDone: (p: Presupuesto)
           <span className="hoy-fecha gray">—</span>
         )}
       </div>
-      <div className="hoy-card-action">{p.siguiente_accion || '—'}</div>
+      <div className="hoy-card-action">
+        <span>{p.siguiente_accion || '—'}</span>
+        <PedidoSummaryBadge presupuesto={p} variant="mini" />
+      </div>
       <div className="hoy-card-right">
         <div className="hoy-card-gestor">{p.gestor}</div>
         <div className="hoy-card-estado" style={{ color: estadoColor[p.estado] || '#6b7280' }}>{p.estado}</div>
@@ -178,7 +182,8 @@ export function Hoy() {
       .hoy-fecha.red { background: #fef2f2; color: #dc2626; }
       .hoy-fecha.orange { background: #fff7ed; color: #ea580c; }
       .hoy-fecha.gray { background: #f9fafb; color: #9ca3af; }
-      .hoy-card-action { font-size: 12px; color: #4b5563; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .hoy-card-action { display: grid; gap: 4px; font-size: 12px; color: #4b5563; min-width: 0; }
+      .hoy-card-action > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .hoy-card-right { text-align: right; min-width: 0; }
       .hoy-card-gestor { font-size: 11px; color: #6b7280; }
       .hoy-card-estado { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

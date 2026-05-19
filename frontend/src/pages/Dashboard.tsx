@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { AlertTriangle, CheckCircle2, Clock3, Download, FilePlus, FileText, Package, PackageCheck, ShieldAlert, TrendingUp } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { api, euro, fmtDate, type Presupuesto, ESTADOS } from '../utils/api'
 import { useData } from '../utils/useData'
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
+import { PedidoSummaryBadge } from '../components/PedidoSummary'
+import { getPedidoExceptionScore, getPedidoSummary } from '../utils/pedidoSummary'
 
 type DashboardData = {
   cards: Record<string, number>
@@ -102,7 +104,19 @@ function CompactList({ items, maxItems = 8 }: { items: Presupuesto[]; maxItems?:
 
 export function Dashboard() {
   const { data, loading, error } = useData<DashboardData>(() => api.get('/dashboard'), [])
+  const pedidosData = useData<Presupuesto[]>(() => api.get('/presupuestos?limit=2000&ocultar_cerrados=false'), [])
   const [showCharts, setShowCharts] = useState(true)
+
+  const pedidoExceptions = useMemo(() => {
+    return (pedidosData.data || [])
+      .map(p => {
+        const summary = getPedidoSummary(p)
+        return { p, summary, score: getPedidoExceptionScore(summary) }
+      })
+      .filter(item => item.summary.tieneExcepciones)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 6)
+  }, [pedidosData.data])
 
   if (loading) return <div className="p-4"><div className="skeleton h-48" /></div>
   if (error) return <div className="error p-4">{error}</div>
@@ -233,6 +247,27 @@ export function Dashboard() {
       </div>
 
       <div className="sections-compact">
+        <div className="section-row">
+          <div className="section-header">
+            <Package size={14} className="text-purple-500" />
+            <span className="text-sm font-medium">Excepciones pedidos proveedor</span>
+            <span className="badge purple">{pedidoExceptions.length}</span>
+          </div>
+          <div className="pedido-exception-list">
+            {pedidosData.loading && <span className="muted text-xs">Cargando pedidos...</span>}
+            {!pedidosData.loading && pedidoExceptions.length === 0 && <span className="muted text-xs">Sin excepciones de pedidos</span>}
+            {pedidoExceptions.map(({ p, summary }) => (
+              <Link to={`/kanban?focus=${p.id}`} className="pedido-exception-item" key={p.id}>
+                <div className="pedido-exception-text">
+                  <strong>{p.numero_presupuesto} · {p.cliente}</strong>
+                  <span>{p.obra_referencia || 'Sin obra'}</span>
+                </div>
+                <PedidoSummaryBadge presupuesto={p} summary={summary} variant="mini" />
+              </Link>
+            ))}
+          </div>
+        </div>
+
         <div className="section-row">
           <div className="section-header">
             <ShieldAlert size={14} className="text-red-500" />
