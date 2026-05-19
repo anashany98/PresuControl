@@ -5,10 +5,13 @@ import hashlib
 import hmac
 import io
 import json
+import logging
 import os
 import secrets
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 import pandas as pd
 from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile, Request
@@ -313,9 +316,9 @@ def request_password_reset(payload: PasswordResetRequest, db: Session = Depends(
     html = f"<p>Solicitud de recuperación de contraseña de <strong>PresuControl</strong>.</p><p><a href='{reset_url}'>Cambiar contraseña</a></p><p>El enlace caduca en 2 horas.</p>"
     try:
         send_email("PresuControl · recuperación de contraseña", [user.email], body, html)
-    except Exception:
-        # No revelar configuración SMTP ni existencia de cuenta.
-        pass
+    except Exception as exc:
+        # Loguear error SMTP pero no revelar detalles al cliente
+        logger.warning(f"Error enviando email de reset a {user.email}: {exc}")
     return {"ok": True, "message": "Si el email existe y está aprobado, recibirá instrucciones."}
 
 
