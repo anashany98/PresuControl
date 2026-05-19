@@ -51,5 +51,8 @@ htmlcov/
 *.bak
 *.backup
 
+# Local brainstorming companion
+.superpowers/
+
 # Alembic
 alembic/versions/*.pyc
