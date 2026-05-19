@@ -1,6 +1,6 @@
 """Add CHECK constraints for EvaluacionProveedor rating ranges
 
-Revision ID: 0012_add_evaluacion_check_constraints
+Revision ID: 0012_eval_constraints
 Revises: 0011_add_missing_indexes
 Create Date: 2026-05-19
 """
@@ -8,7 +8,7 @@ from typing import Sequence, Union
 
 from alembic import op
 
-revision: str = "0012_add_evaluacion_check_constraints"
+revision: str = "0012_eval_constraints"
 down_revision: Union[str, None] = "0011_add_missing_indexes"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
