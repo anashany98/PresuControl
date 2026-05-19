@@ -65,8 +65,7 @@ def get_authenticated_user_from_request(request: Request, db: Session) -> Usuari
     raw_token = None
     if auth.startswith("Bearer "):
         raw_token = auth.removeprefix("Bearer ").strip()
-    elif request.query_params.get("access_token"):
-        raw_token = request.query_params.get("access_token")
+    # Token in URL query param is disabled for security (logged, cached, leaked via Referer)
     if not raw_token:
         raise HTTPException(status_code=401, detail="No autenticado: falta token de acceso.")
     try:

@@ -2074,7 +2074,7 @@ def create_evaluacion_proveedor(
     proveedor = db.get(Proveedor, proveedor_id)
     if not proveedor:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado.")
-    
+
     evaluacion = EvaluacionProveedor(
         proveedor_id=proveedor_id,
         pedido_id=payload.pedido_id,
@@ -2085,20 +2085,21 @@ def create_evaluacion_proveedor(
         evaluado_por=payload.evaluado_por,
     )
     db.add(evaluacion)
-    
-    # Actualizar promedio del proveedor
-    evaluaciones = db.query(EvaluacionProveedor).filter(
-        EvaluacionProveedor.proveedor_id == proveedor_id
-    ).all()
-    total = len(evaluaciones) + 1
-    promedio = (
-        sum(e.puntualidad + e.calidad + e.comunicacion for e in evaluaciones) +
-        (payload.puntualidad + payload.calidad + payload.comunicacion)
-    ) / (total * 3)
-    
+
+    # Calcular promedio usando SQL AVG (en lugar de cargar todas las filas)
+    from sqlalchemy import func
+    result = db.query(
+        func.count(EvaluacionProveedor.id).label('count'),
+        func.avg(EvaluacionProveedor.puntualidad + EvaluacionProveedor.calidad + EvaluacionProveedor.comunicacion).label('avg_sum')
+    ).filter(EvaluacionProveedor.proveedor_id == proveedor_id).first()
+
+    total = (result.count or 0) + 1
+    avg_sum = (result.avg_sum or 0) + payload.puntualidad + payload.calidad + payload.comunicacion
+    promedio = avg_sum / (total * 3) if total > 0 else 0
+
     proveedor.evaluacion_promedio = round(promedio, 2)
     proveedor.total_evaluaciones = total
-    
+
     db.commit()
     db.refresh(evaluacion)
     return evaluacion

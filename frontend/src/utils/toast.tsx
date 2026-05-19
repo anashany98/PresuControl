@@ -1,9 +1,9 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
+import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react'
 import { CheckCircle2, AlertCircle, X } from 'lucide-react'
 
 type ToastType = 'success' | 'error' | 'info'
 
-type Toast = { id: number; message: string; type: ToastType }
+type Toast = { id: number; message: string; type: ToastType; timeoutId: ReturnType<typeof setTimeout> }
 
 type ToastCtx = {
   show: (message: string, type?: ToastType) => void
@@ -24,9 +24,16 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   const show = useCallback((message: string, type: ToastType = 'info') => {
     const id = ++toastId
-    setToasts(t => [...t, { id, message, type }])
-    setTimeout(() => remove(id), 4000)
+    const timeoutId = setTimeout(() => remove(id), 4000)
+    setToasts(t => [...t, { id, message, type, timeoutId }])
   }, [remove])
+
+  // Cleanup timeouts on unmount
+  useEffect(() => {
+    return () => {
+      toasts.forEach(t => clearTimeout(t.timeoutId))
+    }
+  }, [toasts])
 
   return (
     <ToastContext.Provider value={{ show, success: (m) => show(m, 'success'), error: (m) => show(m, 'error') }}>
@@ -38,7 +45,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             {t.type === 'error' && <AlertCircle size={16}/>}
             {t.type === 'info' && <AlertCircle size={16}/>}
             <span>{t.message}</span>
-            <button onClick={() => remove(t.id)}><X size={14}/></button>
+            <button onClick={() => { clearTimeout(t.timeoutId); remove(t.id) }}><X size={14}/></button>
           </div>
         ))}
       </div>

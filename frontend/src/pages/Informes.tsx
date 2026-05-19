@@ -21,7 +21,11 @@ type Report = {
 
 async function downloadExcel(toastFn: (msg: string) => void) {
   try {
-    const res = await fetch('/api/reports/export')
+    const token = localStorage.getItem('presucontrol_token')
+    const res = await fetch('/api/reports/export', {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    if (!res.ok) throw new Error('Download failed')
     const blob = await res.blob()
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -29,6 +33,7 @@ async function downloadExcel(toastFn: (msg: string) => void) {
     a.download = `presucontrol_informe_${new Date().toISOString().slice(0, 10)}.xlsx`
     a.click()
     URL.revokeObjectURL(url)
+    toastFn('Descarga iniciada')
   } catch (e) {
     toastFn('Error exportando')
   }

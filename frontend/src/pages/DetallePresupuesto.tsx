@@ -121,7 +121,7 @@ export function DetallePresupuesto() {
   }
 
   return <>
-    <PageHeader title={`${data.numero_presupuesto} · ${data.cliente}`} subtitle={data.obra_referencia} actions={<Link className="btn secondary" to="/presupuestos"><ArrowLeft size={16}/>Volver</Link>} />
+    <PageHeader title={`${data.numero_presupuesto} · ${String(data.cliente || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}`} subtitle={String(data.obra_referencia || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')} actions={<Link className="btn secondary" to="/presupuestos"><ArrowLeft size={16}/>Volver</Link>} />
     <div className="toolbar"><StateBadge value={data.estado}/><PriorityBadge value={data.prioridad_calculada}/><span className="badge state">Días parado: {data.dias_parado}</span><span className="badge state" title="El control de versión previene que dos personas editen el mismo presupuesto a la vez. Si la versión no coincide, la edición será rechazada.">Versión: {data.version}</span>{data.archivado && <span className="badge danger">Archivado</span>}<button className="btn secondary small" onClick={reload}><RefreshCw size={14}/>Actualizar</button></div>
     <section className="card" style={{ marginBottom: 16 }}>
       <h3>Acciones rápidas guiadas</h3>
@@ -209,7 +209,7 @@ export function DetallePresupuesto() {
         </div>
         <textarea style={{ marginTop: 10 }} rows={4} placeholder="Comentario interno..." value={comment} onChange={e => setComment(e.target.value)} />
         <div className="timeline" style={{ marginTop: 14 }}>
-          {comments.data?.map(c => <div className="timeline-item" key={c.id}><strong>{c.comentario}</strong><br/><small>{fmtDate(c.creado_en)} · {c.usuario_nombre || c.nombre_opcional || c.usuario_email || 'Sin nombre'}</small></div>)}
+          {comments.data?.map(c => <div className="timeline-item" key={c.id}><strong>{String(c.comentario).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')}</strong><br/><small>{fmtDate(c.creado_en)} · {c.usuario_nombre || c.nombre_opcional || c.usuario_email || 'Sin nombre'}</small></div>)}
         </div>
       </section>
     )}

@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { BarChart3, Bell, CalendarDays, CheckSquare, ChevronDown, ChevronLeft, ClipboardList, ClipboardClock, Euro, FilePlus2, Gauge, LayoutDashboard, LogOut, Menu, Search, Settings, ShieldAlert, Table2, UploadCloud, UserCheck, X } from 'lucide-react'
+import { BarChart3, Bell, CalendarDays, CheckSquare, ChevronDown, ClipboardList, ClipboardClock, Euro, FilePlus2, Gauge, LayoutDashboard, LogOut, Menu, Search, Settings, ShieldAlert, Table2, UploadCloud, UserCheck, X } from 'lucide-react'
 import { type FormEvent, useState, useEffect } from 'react'
 import { useAuth } from '../utils/auth'
 import { api, euro, type SidebarCounters } from '../utils/api'
@@ -54,20 +54,11 @@ const sections = [
 
 export function Layout() {
   const [q, setQ] = useState('')
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const [mobileOpen, setMobileOpen] = useState(false)
-  const [isMobile, setIsMobile] = useState(false)
-  const toggleSection = (label: string) => setCollapsed(c => ({ ...c, [label]: !c[label] }))
+  const [userMenuOpen, setUserMenuOpen] = useState(false)
   const navigate = useNavigate()
   const counters = useData<SidebarCounters>(() => api.get('/sidebar-counters'), [])
   const { user, logout } = useAuth()
-
-  useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 768)
-    check()
-    window.addEventListener('resize', check)
-    return () => window.removeEventListener('resize', check)
-  }, [])
 
   useEffect(() => {
     function handleKeydown(e: KeyboardEvent) {
@@ -89,86 +80,151 @@ export function Layout() {
     if (q.trim()) navigate(`/buscar?q=${encodeURIComponent(q.trim())}`)
     setMobileOpen(false)
   }
-  function signOut() { logout(); navigate('/login') }
-  function closeMobile() { setMobileOpen(false) }
 
-  const sidebarContent = (
-    <>
-      <div className="brand">
-        <div className="brand-left">
-          <div className="logo"><Gauge size={20} /></div>
-          <span className="brand-name">PresuControl</span>
-        </div>
-        {isMobile && (
-          <button className="btn secondary small" onClick={closeMobile}><X size={18} /></button>
-        )}
-        {!isMobile && (
-          <button className="btn secondary small nav-collapse-btn" onClick={() => setCollapsed(c => Object.keys(c).length ? {} : { 'Mi trabajo': true, 'Presupuestos': true, 'Seguimiento': true, 'Gestión': true, 'Sistema': true } as Record<string, boolean>)} title="Contraer"><ChevronDown size={14} /></button>
-        )}
-      </div>
-      <nav className="nav">
-        {sections.map(section => {
-          const visibleLinks = section.links.filter(l => !section.adminOnly || user?.puede_gestionar_sistema)
-          if (visibleLinks.length === 0) return null
-          const isCollapsed = collapsed[section.label]
-          return (
-            <div key={section.label} className="nav-section">
-              <button className="nav-section-header" onClick={() => toggleSection(section.label)}>
-                <span className="nav-section-label">{section.label}</span>
-                <ChevronDown size={13} className={`nav-chevron${isCollapsed ? ' collapsed' : ''}`} />
-              </button>
-              {!isCollapsed && visibleLinks.map(({ to, label, icon: Icon, counter }) => {
-                const value = counter ? (counters.data as any)?.[counter] : undefined
-                const counterText = counter === 'dinero_riesgo' && typeof value === 'number' ? euro(value) : value
-                const hasNotificationDot = counter === 'notificaciones_sin_leer' && typeof value === 'number' && value > 0
-                return (
-                  <NavLink key={to} to={to} end={to === '/'} className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`} onClick={closeMobile}>
-                    <span className="nav-label">
-                      <Icon size={16} />
-                      <span className="nav-link-label">{label}</span>
-                      {hasNotificationDot && <span className="nav-dot" />}
-                    </span>
-                    {counterText ? <span className="nav-counter">{counterText}</span> : null}
-                  </NavLink>
-                )
-              })}
-            </div>
-          )
-        })}
-      </nav>
-      <div className="sidebar-user">
-        <div className="sidebar-user-info">
-          <strong>{user?.nombre}</strong>
-          <span>{user?.email}</span>
-        </div>
-        {user?.puede_gestionar_sistema && <span className="badge admin-badge">Admin</span>}
-        <button className="btn secondary small logout-btn" onClick={signOut}><LogOut size={14}/>Salir</button>
-      </div>
-    </>
-  )
+  function signOut() {
+    logout()
+    navigate('/login')
+  }
+
+  const allLinks = sections.flatMap(s => s.links)
 
   return (
     <div className="app-shell">
-      {isMobile && (
-        <>
-          <button className="mobile-menu-btn" onClick={() => setMobileOpen(true)}><Menu size={22} /></button>
-          {mobileOpen && <div className="mobile-overlay" onClick={closeMobile} />}
-          <aside className={`sidebar mobile-sidebar ${mobileOpen ? 'open' : ''}`}>{sidebarContent}</aside>
-        </>
-      )}
-      {!isMobile && <aside className="sidebar">{sidebarContent}</aside>}
-      <main className="main">
-        <div className="topbar">
+      {/* Top Bar */}
+      <header className="topbar">
+        <div className="topbar-left">
+          <div className="brand">
+            <div className="logo"><Gauge size={20} /></div>
+            <span className="brand-name">PresuControl</span>
+          </div>
+        </div>
+
+        <nav className="topnav">
+          {allLinks.slice(0, 6).map(({ to, label, icon: Icon }) => (
+            <NavLink
+              key={to}
+              to={to}
+              end={to === '/'}
+              className={({ isActive }) => `topnav-link${isActive ? ' active' : ''}`}
+              onClick={() => setMobileOpen(false)}
+            >
+              <Icon size={16} />
+              <span>{label}</span>
+            </NavLink>
+          ))}
+        </nav>
+
+        <div className="topbar-right">
           <form className="search-global" onSubmit={submit}>
-            <Search size={18} />
-            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar nº presupuesto, cliente, obra... (pulsa /)" title="Pulsa / para buscar" />
+            <Search size={16} />
+            <input
+              value={q}
+              onChange={e => setQ(e.target.value)}
+              placeholder="Buscar..."
+              title="Pulsa / para buscar"
+            />
             {q && (
-              <button type="button" className="search-clear" onClick={() => setQ('')} title="Limpiar" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, display: 'flex', alignItems: 'center' }}>
+              <button type="button" className="search-clear" onClick={() => setQ('')}>
                 ×
               </button>
             )}
           </form>
+
+          <NavLink to="/notificaciones" className="topbar-icon-btn" title="Notificaciones">
+            <Bell size={18} />
+            {counters.data?.notificaciones_sin_leer ? (
+              <span className="nav-dot" />
+            ) : null}
+          </NavLink>
+
+          <div className="user-menu-container">
+            <button
+              className="user-menu-btn"
+              onClick={() => setUserMenuOpen(!userMenuOpen)}
+            >
+              <span className="user-avatar">{user?.nombre?.charAt(0) || 'U'}</span>
+              <ChevronDown size={14} className={userMenuOpen ? 'rotated' : ''} />
+            </button>
+            {userMenuOpen && (
+              <div className="user-dropdown">
+                <div className="user-dropdown-info">
+                  <strong>{user?.nombre}</strong>
+                  <span>{user?.email}</span>
+                </div>
+                <hr className="dropdown-divider" />
+                <NavLink to="/configuracion" className="dropdown-item" onClick={() => setUserMenuOpen(false)}>
+                  <Settings size={14} /> Configuración
+                </NavLink>
+                {user?.puede_gestionar_sistema && (
+                  <NavLink to="/usuarios" className="dropdown-item" onClick={() => setUserMenuOpen(false)}>
+                    <UserCheck size={14} /> Usuarios
+                  </NavLink>
+                )}
+                <hr className="dropdown-divider" />
+                <button className="dropdown-item danger" onClick={signOut}>
+                  <LogOut size={14} /> Salir
+                </button>
+              </div>
+            )}
+          </div>
+
+          <button
+            className="mobile-menu-btn"
+            onClick={() => setMobileOpen(true)}
+          >
+            <Menu size={20} />
+          </button>
         </div>
+      </header>
+
+      {/* Mobile Menu Drawer */}
+      {mobileOpen && (
+        <>
+          <div className="mobile-overlay" onClick={() => setMobileOpen(false)} />
+          <aside className="mobile-drawer">
+            <div className="mobile-drawer-header">
+              <div className="brand">
+                <div className="logo"><Gauge size={20} /></div>
+                <span className="brand-name">PresuControl</span>
+              </div>
+              <button className="btn secondary small" onClick={() => setMobileOpen(false)}>
+                <X size={18} />
+              </button>
+            </div>
+            <nav className="mobile-nav">
+              {sections.map(section => {
+                const visibleLinks = section.links.filter(l => !section.adminOnly || user?.puede_gestionar_sistema)
+                if (visibleLinks.length === 0) return null
+                return (
+                  <div key={section.label} className="mobile-nav-section">
+                    <span className="nav-section-label">{section.label}</span>
+                    {visibleLinks.map(({ to, label, icon: Icon, counter }) => {
+                      const value = counter ? (counters.data as any)?.[counter] : undefined
+                      return (
+                        <NavLink
+                          key={to}
+                          to={to}
+                          end={to === '/'}
+                          className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
+                          onClick={() => setMobileOpen(false)}
+                        >
+                          <span className="nav-label">
+                            <Icon size={16} />
+                            <span>{label}</span>
+                          </span>
+                          {value ? <span className="nav-counter">{value}</span> : null}
+                        </NavLink>
+                      )
+                    })}
+                  </div>
+                )
+              })}
+            </nav>
+          </aside>
+        </>
+      )}
+
+      <main className="main">
         <Outlet />
       </main>
     </div>

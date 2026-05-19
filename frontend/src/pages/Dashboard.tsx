@@ -119,10 +119,10 @@ export function Dashboard() {
   }, [pedidosData.data])
 
   if (loading) return <div className="p-4"><div className="skeleton h-48" /></div>
-  if (error) return <div className="error p-4">{error}</div>
+  if (error || !data) return <div className="error p-4">{error || 'No se pudo cargar el dashboard'}</div>
 
-  const cards = data!.cards
-  const allPresupuestos = Object.values(data!.sections).flat()
+  const cards = data.cards
+  const allPresupuestos = Object.values(data.sections).flat()
   const uniquePresupuestos = allPresupuestos.filter((p, i, a) => a.findIndex(x => x.id === p.id) === i)
 
   const estadoCounts = ESTADOS.map(e => ({
@@ -272,36 +272,36 @@ export function Dashboard() {
           <div className="section-header">
             <ShieldAlert size={14} className="text-red-500" />
             <span className="text-sm font-medium">Críticos (aceptados sin pedido)</span>
-            <span className="badge red">{data!.sections.criticos_aceptados_sin_pedido.length}</span>
+            <span className="badge red">{data.sections.criticos_aceptados_sin_pedido.length}</span>
           </div>
-          <CompactList items={data!.sections.criticos_aceptados_sin_pedido} maxItems={5} />
+          <CompactList items={data.sections.criticos_aceptados_sin_pedido} maxItems={5} />
         </div>
 
         <div className="section-row">
           <div className="section-header">
             <Clock3 size={14} className="text-orange-500" />
             <span className="text-sm font-medium">Pendientes respuesta</span>
-            <span className="badge orange">{data!.sections.pendientes_respuesta_cliente.length}</span>
+            <span className="badge orange">{data.sections.pendientes_respuesta_cliente.length}</span>
           </div>
-          <CompactList items={data!.sections.pendientes_respuesta_cliente} maxItems={5} />
+          <CompactList items={data.sections.pendientes_respuesta_cliente} maxItems={5} />
         </div>
 
         <div className="section-row">
           <div className="section-header">
             <PackageCheck size={14} className="text-yellow-500" />
             <span className="text-sm font-medium">Pedidos sin plazo</span>
-            <span className="badge yellow">{data!.sections.pedidos_sin_plazo.length}</span>
+            <span className="badge yellow">{data.sections.pedidos_sin_plazo.length}</span>
           </div>
-          <CompactList items={data!.sections.pedidos_sin_plazo} maxItems={5} />
+          <CompactList items={data.sections.pedidos_sin_plazo} maxItems={5} />
         </div>
 
         <div className="section-row">
           <div className="section-header">
             <AlertTriangle size={14} className="text-orange-600" />
             <span className="text-sm font-medium">Incidencias abiertas</span>
-            <span className="badge orange">{data!.sections.incidencias_abiertas.length}</span>
+            <span className="badge orange">{data.sections.incidencias_abiertas.length}</span>
           </div>
-          <CompactList items={data!.sections.incidencias_abiertas} maxItems={5} />
+          <CompactList items={data.sections.incidencias_abiertas} maxItems={5} />
         </div>
 
         <div className="section-row">
@@ -309,17 +309,17 @@ export function Dashboard() {
             <Package size={14} className="text-blue-500" />
             <span className="text-sm font-medium">Próximas fechas límite</span>
           </div>
-          <CompactList items={data!.sections.proximas_fechas_limite} maxItems={5} />
+          <CompactList items={data.sections.proximas_fechas_limite} maxItems={5} />
         </div>
 
-        {data!.sections.pedidos_pendientes?.length > 0 && (
+        {data.sections.pedidos_pendientes?.length > 0 && (
           <div className="section-row">
             <div className="section-header">
               <Package size={14} className="text-purple-500" />
               <span className="text-sm font-medium">Pedidos pendientes</span>
-              <span className="badge purple">{data!.sections.pedidos_pendientes.length}</span>
+              <span className="badge purple">{data.sections.pedidos_pendientes.length}</span>
             </div>
-            <CompactList items={data!.sections.pedidos_pendientes} maxItems={5} />
+            <CompactList items={data.sections.pedidos_pendientes} maxItems={5} />
           </div>
         )}
       </div>
