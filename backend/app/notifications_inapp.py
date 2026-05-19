@@ -36,13 +36,13 @@ def crear_notificacion(
 def obtener_notificaciones(db: Session, user_id: int | None, unread_only: bool = False, limit: int = 50) -> list[InAppNotification]:
     q = db.query(InAppNotification).filter(InAppNotification.user_id == user_id)
     if unread_only:
-        q = q.filter(InAppNotification.leida == False)
+        q = q.filter(InAppNotification.leida.is_(False))
     return q.order_by(InAppNotification.creado_en.desc()).limit(limit).all()
 
 def contar_sin_leer(db: Session, user_id: int | None) -> int:
     return db.query(InAppNotification).filter(
         InAppNotification.user_id == user_id,
-        InAppNotification.leida == False,
+        InAppNotification.leida.is_(False),
     ).count()
 
 def marcar_leida(db: Session, notification_id: int, user_id: int | None) -> bool:
@@ -59,11 +59,11 @@ def marcar_leida(db: Session, notification_id: int, user_id: int | None) -> bool
 def marcar_todas_leidas(db: Session, user_id: int | None) -> int:
     count = db.query(InAppNotification).filter(
         InAppNotification.user_id == user_id,
-        InAppNotification.leida == False,
+        InAppNotification.leida.is_(False),
     ).count()
     db.query(InAppNotification).filter(
         InAppNotification.user_id == user_id,
-        InAppNotification.leida == False,
+        InAppNotification.leida.is_(False),
     ).update({InAppNotification.leida: True})
     db.commit()
     return count

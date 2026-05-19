@@ -1,9 +1,9 @@
 import { useState, useMemo } from 'react'
 import { PageHeader } from '../components/PageHeader'
-import { api, fmtDate, type Presupuesto } from '../utils/api'
+import { api, fmtDate, euro, type Presupuesto } from '../utils/api'
 import { useData } from '../utils/useData'
 import { Link } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, CalendarDays, X, ArrowRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, CalendarDays, X, ArrowRight, ExternalLink, Package, AlertTriangle, CheckCircle, Clock } from 'lucide-react'
 
 type Evento = { date: string; type: string; tipo: 'limite' | 'plazo' | 'entrega' | 'enviado'; p: Presupuesto }
 
@@ -49,6 +49,7 @@ export function Calendario() {
   const [current, setCurrent] = useState(() => new Date())
   const [view, setView] = useState<'mes' | 'semana'>('mes')
   const [selectedDay, setSelectedDay] = useState<Date | null>(null)
+  const [modalPresupuesto, setModalPresupuesto] = useState<Presupuesto | null>(null)
 
   const year = current.getFullYear()
   const month = current.getMonth()
@@ -187,22 +188,21 @@ export function Calendario() {
                           {evs.length === 0 ? (
                             <span className="cal-no-events">—</span>
                           ) : (
-                            evs.map((e, i) => (
-                              <Link
-                                key={i}
-                                to={`/presupuestos/${e.p.id}`}
-                                className="cal-event"
-                                style={{
-                                  background: EVENT_COLORS[e.tipo].bg,
-                                  borderLeftColor: EVENT_COLORS[e.tipo].border,
-                                  color: EVENT_COLORS[e.tipo].text
-                                }}
-                                onClick={e => e.stopPropagation()}
-                              >
-                                <span className="cal-event-num">{e.p.numero_presupuesto}</span>
-                                <span className="cal-event-type">{e.type}</span>
-                              </Link>
-                            ))
+evs.map((e, i) => (
+                                <button
+                                  key={i}
+                                  className="cal-event"
+                                  style={{
+                                    background: EVENT_COLORS[e.tipo].bg,
+                                    borderLeftColor: EVENT_COLORS[e.tipo].border,
+                                    color: EVENT_COLORS[e.tipo].text
+                                  }}
+                                  onClick={ev => { ev.stopPropagation(); setModalPresupuesto(e.p) }}
+                                >
+                                  <span className="cal-event-num">{e.p.numero_presupuesto}</span>
+                                  <span className="cal-event-type">{e.type}</span>
+                                </button>
+                              ))
                           )}
                         </div>
                       )
@@ -233,19 +233,18 @@ export function Calendario() {
                             </div>
                             <div className="cal-events-list">
                               {evs.slice(0, 3).map((e, i) => (
-                                <Link
+                                <button
                                   key={i}
-                                  to={`/presupuestos/${e.p.id}`}
                                   className="cal-event cal-event-compact"
                                   style={{
                                     background: EVENT_COLORS[e.tipo].bg,
                                     borderLeftColor: EVENT_COLORS[e.tipo].border,
                                     color: EVENT_COLORS[e.tipo].text
                                   }}
-                                  onClick={e => e.stopPropagation()}
+                                  onClick={ev => { ev.stopPropagation(); setModalPresupuesto(e.p) }}
                                 >
                                   {e.p.numero_presupuesto}
-                                </Link>
+                                </button>
                               ))}
                               {evs.length > 3 && (
                                 <span className="cal-more">+{evs.length - 3} más</span>
@@ -310,6 +309,9 @@ export function Calendario() {
           </div>
         </div>
       </>}
+      {modalPresupuesto && (
+        <PresupuestoModal presupuesto={modalPresupuesto} onClose={() => setModalPresupuesto(null)} />
+      )}
       <style>{`
         .cal-wrapper {
           max-width: 1400px;
@@ -778,7 +780,276 @@ export function Calendario() {
             font-size: 15px;
           }
         }
+        .cal-modal-backdrop {
+          position: fixed;
+          inset: 0;
+          background: rgba(0,0,0,0.4);
+          backdrop-filter: blur(4px);
+          z-index: 1000;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 20px;
+        }
+        .cal-modal {
+          background: white;
+          border-radius: 20px;
+          width: 100%;
+          max-width: 520px;
+          max-height: 90vh;
+          overflow-y: auto;
+          box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
+        }
+        .cal-modal-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          padding: 20px 20px 16px;
+          border-bottom: 1px solid #e8e4df;
+        }
+        .cal-modal-title-group { flex: 1; }
+        .cal-modal-title {
+          font-size: 22px;
+          font-weight: 800;
+          color: #1c1917;
+          letter-spacing: -0.02em;
+          margin: 0 0 4px;
+        }
+        .cal-modal-subtitle {
+          font-size: 14px;
+          font-weight: 600;
+          color: #78716c;
+          margin: 0;
+        }
+        .cal-modal-body { padding: 16px 20px; }
+        .cal-modal-badges {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          margin-bottom: 16px;
+        }
+        .cal-modal-badge {
+          font-size: 11px;
+          font-weight: 700;
+          padding: 4px 10px;
+          border-radius: 8px;
+        }
+        .cal-modal-badge.state { background: #f5f3f0; color: #44403c; }
+        .cal-modal-badge.state.accepted { background: #f0fdf4; color: #166534; }
+        .cal-modal-badge.state.done { background: #f0fdf4; color: #166534; }
+        .cal-modal-badge.state.blocked { background: #fef2f2; color: #991b1b; }
+        .cal-modal-section {
+          margin-bottom: 16px;
+          padding-bottom: 16px;
+          border-bottom: 1px solid #f5f3f0;
+        }
+        .cal-modal-section:last-child { border-bottom: 0; margin-bottom: 0; }
+        .cal-modal-section-title {
+          font-size: 11px;
+          font-weight: 700;
+          color: #78716c;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+          margin: 0 0 10px;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+        .cal-modal-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 6px 0;
+          font-size: 13px;
+        }
+        .cal-modal-label {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          color: #78716c;
+          font-weight: 500;
+        }
+        .cal-modal-value {
+          color: #1c1917;
+          font-weight: 600;
+          text-align: right;
+        }
+        .cal-modal-empty { color: #c4bfb8; }
+        .cal-modal-importe {
+          font-size: 28px;
+          font-weight: 800;
+          color: #1c1917;
+          letter-spacing: -0.03em;
+          text-align: center;
+          padding: 8px 0;
+        }
+        .cal-modal-alert {
+          background: #fef2f2;
+          border-radius: 12px;
+          padding: 12px;
+          margin: 0 -4px;
+        }
+        .cal-modal-alert .cal-modal-section-title { color: #991b1b; }
+        .cal-modal-text {
+          font-size: 13px;
+          color: #44403c;
+          margin: 0;
+          line-height: 1.5;
+        }
+        .cal-modal-footer {
+          padding: 16px 20px;
+          border-top: 1px solid #e8e4df;
+          display: flex;
+          justify-content: flex-end;
+        }
+        .cal-modal-footer .btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 10px 18px;
+          background: #1c1917;
+          color: white;
+          border-radius: 10px;
+          font-size: 13px;
+          font-weight: 600;
+          text-decoration: none;
+          transition: all 0.15s;
+        }
+        .cal-modal-footer .btn:hover { background: #292524; }
+        .badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          font-size: 11px;
+          font-weight: 700;
+          padding: 3px 8px;
+          border-radius: 6px;
+        }
+        .badge.verde { background: #f0fdf4; color: #166534; }
+        .badge.amarillo { background: #fefce8; color: #854d0e; }
+        .badge.naranja { background: #fff7ed; color: #9a3412; }
+        .badge.rojo { background: #fef2f2; color: #991b1b; }
+        .badge.critico { background: #1c1917; color: white; }
       `}</style>
     </>
+)
+}
+
+function EstadoBadge({ estado }: { estado: string }) {
+  let cls = 'cal-modal-badge state'
+  if (estado.includes('Aceptado') || estado.includes('Pedido proveedor')) cls += ' accepted'
+  if (estado.includes('Entregado') || estado.includes('Plazo')) cls += ' done'
+  if (estado.includes('Bloqueado') || estado.includes('Cancelado')) cls += ' blocked'
+  return <span className={cls}>{estado}</span>
+}
+
+function PrioridadBadge({ value }: { value?: string }) {
+  const cls = (value || 'Verde').toLowerCase().replace('í', 'i')
+  return <span className={`badge ${cls}`}>{value || 'Verde'}</span>
+}
+
+function InfoRow({ icon: Icon, label, value, badge }: { icon: typeof Clock; label: string; value?: string | null; badge?: React.ReactNode }) {
+  return (
+    <div className="cal-modal-row">
+      <span className="cal-modal-label">
+        <Icon size={14} />
+        {label}
+      </span>
+      <span className="cal-modal-value">
+        {badge || value || <span className="cal-modal-empty">—</span>}
+      </span>
+    </div>
+  )
+}
+
+function PresupuestoModal({ presupuesto, onClose }: { presupuesto: Presupuesto; onClose: () => void }) {
+  return (
+    <div className="cal-modal-backdrop" onClick={onClose}>
+      <div className="cal-modal" onClick={e => e.stopPropagation()}>
+        <div className="cal-modal-header">
+          <div className="cal-modal-title-group">
+            <h2 className="cal-modal-title">{presupuesto.numero_presupuesto}</h2>
+            <p className="cal-modal-subtitle">{presupuesto.cliente}</p>
+          </div>
+          <button className="cal-btn cal-btn-close" onClick={onClose} aria-label="Cerrar">
+            <X size={16}/>
+          </button>
+        </div>
+
+        <div className="cal-modal-body">
+          <div className="cal-modal-badges">
+            <EstadoBadge estado={presupuesto.estado} />
+            <PrioridadBadge value={presupuesto.prioridad_calculada} />
+            {presupuesto.incidencia && (
+              <span className="badge rojo">
+                <AlertTriangle size={13} />
+                Incidencia
+              </span>
+            )}
+          </div>
+
+          <div className="cal-modal-section">
+            <h3 className="cal-modal-section-title">Información general</h3>
+            <InfoRow icon={Clock} label="Fecha presupuesto" value={fmtDate(presupuesto.fecha_presupuesto)} />
+            <InfoRow icon={Clock} label="Fecha envío cliente" value={fmtDate(presupuesto.fecha_envio_cliente)} />
+            <InfoRow icon={CheckCircle} label="Fecha aceptación" value={fmtDate(presupuesto.fecha_aceptacion)} />
+            <InfoRow icon={Package} label="Proveedor" value={presupuesto.proveedor} />
+            <InfoRow icon={Clock} label="Obra / referencia" value={presupuesto.obra_referencia} />
+            <InfoRow icon={Clock} label="Gestor" value={presupuesto.gestor} />
+          </div>
+
+          <div className="cal-modal-section">
+            <h3 className="cal-modal-section-title">Importe</h3>
+            <div className="cal-modal-importe">{euro(presupuesto.importe)}</div>
+          </div>
+
+          <div className="cal-modal-section">
+            <h3 className="cal-modal-section-title">Plazos y entregas</h3>
+            <InfoRow icon={Clock} label="Plazo proveedor" value={fmtDate(presupuesto.plazo_proveedor)} />
+            <InfoRow icon={Clock} label="Fecha prevista entrega" value={fmtDate(presupuesto.fecha_prevista_entrega)} />
+            <InfoRow icon={Clock} label="Fecha límite siguiente acción" value={fmtDate(presupuesto.fecha_limite_siguiente_accion)} />
+            <InfoRow icon={Clock} label="Siguiente acción" value={presupuesto.siguiente_accion} />
+          </div>
+
+          <div className="cal-modal-section">
+            <h3 className="cal-modal-section-title">Pedido proveedor</h3>
+            <InfoRow
+              icon={presupuesto.pedido_proveedor_realizado ? CheckCircle : Package}
+              label="Pedido realizado"
+              value={presupuesto.pedido_proveedor_realizado ? 'Sí' : 'No'}
+            />
+            <InfoRow icon={Package} label="Nº pedido proveedor" value={presupuesto.numero_pedido_proveedor} />
+          </div>
+
+          {presupuesto.incidencia && presupuesto.descripcion_incidencia && (
+            <div className="cal-modal-section cal-modal-alert">
+              <h3 className="cal-modal-section-title">
+                <AlertTriangle size={14} />
+                Descripción incidencia
+              </h3>
+              <p className="cal-modal-text">{presupuesto.descripcion_incidencia}</p>
+            </div>
+          )}
+
+          {presupuesto.observaciones && (
+            <div className="cal-modal-section">
+              <h3 className="cal-modal-section-title">Observaciones</h3>
+              <p className="cal-modal-text">{presupuesto.observaciones}</p>
+            </div>
+          )}
+
+          <div className="cal-modal-section">
+            <InfoRow icon={Clock} label="Días parado" value={String(presupuesto.dias_parado)} />
+          </div>
+        </div>
+
+        <div className="cal-modal-footer">
+          <Link to={`/presupuestos/${presupuesto.id}`} className="btn">
+            <ExternalLink size={15} />
+            Ver presupuesto
+          </Link>
+        </div>
+      </div>
+    </div>
   )
 }

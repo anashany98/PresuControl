@@ -49,6 +49,7 @@ export type Presupuesto = {
   creado_en: string
   actualizado_en: string
   version: number
+  pedidos?: PedidoProveedor[]
 }
 
 
@@ -120,6 +121,13 @@ export type Settings = {
   horas_escalado_nivel_2: number
   horas_escalado_nivel_3: number
   dias_sin_actualizar_aviso: number
+  timezone: string
+  public_url: string
+  smtp_configured: boolean
+  smtp_host: string
+  smtp_port: number
+  smtp_from: string
+  smtp_tls: boolean
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -156,6 +164,25 @@ export const api = {
   patch<T>(path: string, body: unknown) { return request<T>(path, { method: 'PATCH', body: JSON.stringify(body) }) },
   put<T>(path: string, body: unknown) { return request<T>(path, { method: 'PUT', body: JSON.stringify(body) }) },
   delete<T>(path: string) { return request<T>(path, { method: 'DELETE' }) },
+
+  getPedidos(presupuestoId: number) {
+    return request<PedidoProveedor[]>(`/presupuestos/${presupuestoId}/pedidos`)
+  },
+  createPedido(presupuestoId: number, data: Partial<PedidoProveedor>) {
+    return request<PedidoProveedor>(`/presupuestos/${presupuestoId}/pedidos`, { method: 'POST', body: JSON.stringify(data) })
+  },
+  updatePedido(pedidoId: number, data: Partial<PedidoProveedor>) {
+    return request<PedidoProveedor>(`/pedidos/${pedidoId}`, { method: 'PATCH', body: JSON.stringify(data) })
+  },
+  deletePedido(pedidoId: number) {
+    return request<void>(`/pedidos/${pedidoId}`, { method: 'DELETE' })
+  },
+
+  getProveedores() { return request<Proveedor[]>(`/proveedores`) },
+  getProveedoresPresupuesto(presupuestoId: number) { return request<PresupuestoProveedor[]>(`/presupuestos/${presupuestoId}/proveedores`) },
+  addProveedorPresupuesto(presupuestoId: number, data: PresupuestoProveedorCreate) { return request<PresupuestoProveedor>(`/presupuestos/${presupuestoId}/proveedores`, { method: 'POST', body: JSON.stringify(data) }) },
+  updateProveedorPresupuesto(presupuestoId: number, proveedorId: number, data: PresupuestoProveedorUpdate) { return request<PresupuestoProveedor>(`/presupuestos/${presupuestoId}/proveedores/${proveedorId}`, { method: 'PATCH', body: JSON.stringify(data) }) },
+  removeProveedorPresupuesto(presupuestoId: number, proveedorId: number) { return request<void>(`/presupuestos/${presupuestoId}/proveedores/${proveedorId}`, { method: 'DELETE' }) },
 }
 
 export function euro(value?: number | null) {
@@ -172,7 +199,7 @@ export function isoDate(value?: string | null) {
   return value.slice(0, 10)
 }
 
-export type SidebarCounters = { hoy: number; aceptados_sin_pedido: number; riesgo: number; incidencias: number; usuarios_pendientes: number; dinero_riesgo: number; notificaciones_sin_leer: number }
+export type SidebarCounters = { hoy: number; aceptados_sin_pedido: number; riesgo: number; incidencias: number; usuarios_pendientes: number; dinero_riesgo: number; notificaciones_sin_leer: number; pedidos_pendientes: number }
 
 export type KanbanPayload = {
   action: string
@@ -206,3 +233,68 @@ export function exportUrl(mode = 'all', params = new URLSearchParams()) {
   params.set('mode', mode)
   return `${API_URL}/export?${params.toString()}`
 }
+
+export const ESTADO_ENTREGA_OPTIONS = ['pendiente', 'parcial', 'completado'] as const
+export type EstadoEntrega = typeof ESTADO_ENTREGA_OPTIONS[number]
+
+export type PedidoProveedor = {
+  id: number
+  presupuesto_id: number
+  proveedor: string
+  numero_pedido?: string | null
+  fecha_pedido?: string | null
+  importe?: number | null
+  estado_entrega: EstadoEntrega
+  fecha_entrega_prevista?: string | null
+  fecha_entrega_real?: string | null
+  observaciones?: string | null
+  creado_en: string
+  actualizado_en: string
+}
+
+export type PedidoProveedorCreate = {
+  presupuesto_id: number
+  proveedor: string
+  numero_pedido?: string | null
+  fecha_pedido?: string | null
+  importe?: number | null
+  estado_entrega?: EstadoEntrega
+  fecha_entrega_prevista?: string | null
+  fecha_entrega_real?: string | null
+  observaciones?: string | null
+}
+
+export type PedidoProveedorUpdate = Partial<Omit<PedidoProveedorCreate, 'presupuesto_id'>>
+
+export type Proveedor = {
+  id: number
+  nombre: string
+  contacto?: string | null
+  email?: string | null
+  telefono?: string | null
+  direccion?: string | null
+  notas?: string | null
+  evaluacion_promedio?: number | null
+  total_evaluaciones: number
+  activo: boolean
+  creado_en: string
+  actualizado_en: string
+}
+
+export type PresupuestoProveedor = {
+  id: number
+  presupuesto_id: number
+  proveedor_id: number
+  estado: 'contactado' | 'cotizacion_recibida' | 'descartado'
+  importe_cotizado?: number | null
+  fecha_cotizacion?: string | null
+  notas?: string | null
+  creado_en: string
+  actualizado_en: string
+  proveedor: Proveedor
+}
+
+export type ProveedorCreate = { nombre: string; contacto?: string; email?: string; telefono?: string; direccion?: string; notas?: string }
+export type ProveedorUpdate = Partial<ProveedorCreate>
+export type PresupuestoProveedorCreate = { proveedor_id: number; estado?: string; importe_cotizado?: number; fecha_cotizacion?: string; notas?: string }
+export type PresupuestoProveedorUpdate = Partial<Omit<PresupuestoProveedorCreate, 'proveedor_id'>>

@@ -35,6 +35,7 @@ const sections = [
     label: 'Gestión',
     links: [
       { to: '/informes', label: 'Informes', icon: BarChart3 },
+      { to: '/reportes', label: 'Reportes', icon: BarChart3 },
       { to: '/importar', label: 'Importar', icon: UploadCloud },
       { to: '/avisos', label: 'Avisos', icon: Bell },
       { to: '/notificaciones', label: 'Notificaciones', icon: Bell, counter: 'notificaciones_sin_leer' },
@@ -152,7 +153,7 @@ export function Layout() {
         <>
           <button className="mobile-menu-btn" onClick={() => setMobileOpen(true)}><Menu size={22} /></button>
           {mobileOpen && <div className="mobile-overlay" onClick={closeMobile} />}
-          <aside className="sidebar mobile-sidebar">{sidebarContent}</aside>
+          <aside className={`sidebar mobile-sidebar ${mobileOpen ? 'open' : ''}`}>{sidebarContent}</aside>
         </>
       )}
       {!isMobile && <aside className="sidebar">{sidebarContent}</aside>}
@@ -161,6 +162,11 @@ export function Layout() {
           <form className="search-global" onSubmit={submit}>
             <Search size={18} />
             <input value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar nº presupuesto, cliente, obra... (pulsa /)" title="Pulsa / para buscar" />
+            {q && (
+              <button type="button" className="search-clear" onClick={() => setQ('')} title="Limpiar" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, display: 'flex', alignItems: 'center' }}>
+                ×
+              </button>
+            )}
           </form>
         </div>
         <Outlet />

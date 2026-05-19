@@ -1,7 +1,7 @@
-FROM node:22-alpine AS build
+FROM node:22-slim AS build
 WORKDIR /app
-COPY package.json ./
-RUN npm install
+COPY package.json package-lock.json ./
+RUN npm install -g npm@11.14.1 && npm ci
 COPY . .
 ARG VITE_API_URL=/api
 ENV VITE_API_URL=$VITE_API_URL

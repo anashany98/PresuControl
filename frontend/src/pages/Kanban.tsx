@@ -6,6 +6,7 @@ import { api, ESTADOS, euro, fmtDate, isoDate, type Presupuesto } from '../utils
 import { useAuth } from '../utils/auth'
 import { useData } from '../utils/useData'
 import { Link } from 'react-router-dom'
+import { useToast } from '../utils/toast'
 
 const columns = ESTADOS.filter(s => s !== 'Pendiente de enviar')
 
@@ -43,6 +44,8 @@ export function Kanban() {
   const [dragId, setDragId] = useState<number | null>(null)
   const [target, setTarget] = useState<{ presupuesto: Presupuesto; status: string } | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const toast = useToast()
   function drop(status: string) {
     const presupuesto = (data || []).find(p => p.id === dragId)
     if (!presupuesto || presupuesto.estado === status) return
@@ -50,16 +53,32 @@ export function Kanban() {
     setTarget({ presupuesto, status })
   }
   async function apply(payload: KanbanPayload) {
-    if (!target) return
+    if (!target || saving) return
+    setSaving(true)
+    const dateFields: (keyof KanbanPayload)[] = [
+      'fecha_envio_cliente', 'fecha_aceptacion', 'fecha_pedido_proveedor',
+      'plazo_proveedor', 'fecha_prevista_entrega', 'fecha_limite_siguiente_accion',
+      'fecha_cancelacion_rechazo'
+    ]
+    const cleaned = { ...payload }
+    for (const f of dateFields) {
+      if ((cleaned as any)[f] === '') (cleaned as any)[f] = null
+    }
     try {
-      if (payload.action === 'direct_status') {
-        await api.patch(`/presupuestos/${target.presupuesto.id}`, { estado: target.status, expected_version: target.presupuesto.version })
+      if (cleaned.action === 'direct_status') {
+        if (target.status === 'Pedido proveedor realizado') {
+          await api.post(`/presupuestos/${target.presupuesto.id}/quick-action`, { action: 'crear_pedido_proveedor', expected_version: target.presupuesto.version, proveedor: cleaned.proveedor, numero_pedido_proveedor: cleaned.numero_pedido_proveedor, fecha_pedido_proveedor: cleaned.fecha_pedido_proveedor || new Date().toISOString().slice(0, 10) })
+        } else {
+          await api.patch(`/presupuestos/${target.presupuesto.id}`, { estado: target.status, expected_version: target.presupuesto.version })
+        }
       } else {
-        await api.post(`/presupuestos/${target.presupuesto.id}/quick-action`, payload)
+        await api.post(`/presupuestos/${target.presupuesto.id}/quick-action`, cleaned)
       }
+      toast.success('Presupuesto movido correctamente')
       setTarget(null)
       reload()
     } catch (e) { setMsg(e instanceof Error ? e.message : String(e)) }
+    finally { setSaving(false) }
   }
   return <>
     <PageHeader title="Kanban" subtitle="Mueve tarjetas entre estados. Si el estado exige datos, se abre una ventana guiada antes de guardar." />
@@ -86,11 +105,32 @@ export function Kanban() {
                   <span>{p.gestor.split(' ')[0]}</span>
                 </div>
               </div>
-              <div className="kanban-card-tooltip">
-                <div>Responsável: {p.responsable_actual || '—'}</div>
-                <div>Dias parado: {p.dias_parado}</div>
-                {p.incidencia && <div style={{color:'#f87171'}}>⚠ Incidencia abierta</div>}
-                {p.siguiente_accion && <div>Próxima: {p.siguiente_accion}</div>}
+              {(p.pedidos?.length ?? 0) > 0 && (
+                <div style={{ borderTop: '1px solid #e5e7eb', marginTop: 8, paddingTop: 8 }}>
+                  <div style={{ fontSize: 10, color: '#6b7280', fontWeight: 700, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Pedidos proveedor</div>
+                  {p.pedidos!.map(pedido => (
+                    <div key={pedido.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11, marginBottom: 2 }}>
+                      <span style={{ color: '#374151' }}>{pedido.numero_pedido || '—'}</span>
+                      <span style={{ 
+                        color: pedido.estado_entrega === 'completado' ? '#15803d' : pedido.estado_entrega === 'parcial' ? '#d97706' : '#6b7280',
+                        fontWeight: 600
+                      }}>{pedido.estado_entrega || 'pendiente'}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {/* Keyboard accessible move buttons */}
+              <div className="kanban-card-move-btns" style={{ display: 'flex', gap: 4, marginTop: 8 }}>
+                {columns.filter(c => c !== p.estado).slice(0, 2).map(nextStatus => (
+                  <button
+                    key={nextStatus}
+                    className="text-xs text-gray-500 hover:text-gray-700 border border-gray-200 rounded px-2 py-1"
+                    onClick={(e) => { e.stopPropagation(); setTarget({ presupuesto: p, status: nextStatus }); }}
+                    title={`Mover a ${nextStatus}`}
+                  >
+                    → {nextStatus.slice(0, 12)}
+                  </button>
+                ))}
               </div>
               <Link to={`/presupuestos/${p.id}`} style={{ position: 'absolute', inset: 0 }} onClick={(e) => e.stopPropagation()} />
             </div>
@@ -98,11 +138,11 @@ export function Kanban() {
         })}
       </div>)}
     </div>}
-    {target && <KanbanModal presupuesto={target.presupuesto} status={target.status} onClose={() => setTarget(null)} onSubmit={apply} />}
+    {target && <KanbanModal presupuesto={target.presupuesto} status={target.status} onClose={() => setTarget(null)} onSubmit={apply} saving={saving} />}
   </>
 }
 
-function KanbanModal({ presupuesto, status, onClose, onSubmit }: { presupuesto: Presupuesto; status: string; onClose: () => void; onSubmit: (payload: KanbanPayload) => void }) {
+function KanbanModal({ presupuesto, status, onClose, onSubmit, saving }: { presupuesto: Presupuesto; status: string; onClose: () => void; onSubmit: (payload: KanbanPayload) => void; saving: boolean }) {
   const { user } = useAuth()
   const action = actionByStatus[status]
   const [payload, setPayload] = useState<KanbanPayload>({
@@ -134,7 +174,7 @@ function KanbanModal({ presupuesto, status, onClose, onSubmit }: { presupuesto: 
       {status === 'Cancelado / rechazado' && <><Field label="Fecha cancelación"><input className="input" type="date" value={payload.fecha_cancelacion_rechazo || ''} onChange={e => set('fecha_cancelacion_rechazo', e.target.value)} /></Field><Field label="Motivo cancelación"><textarea rows={4} value={payload.motivo_cancelacion_rechazo || ''} onChange={e => set('motivo_cancelacion_rechazo', e.target.value)} /></Field></>}
       {['En preparación / fabricación','Entregado / cerrado'].includes(status) && <p className="muted">No requiere datos adicionales, pero el backend aplicará las validaciones de cierre y versión.</p>}
     </div>
-    <div className="modal-actions"><button className="btn secondary" onClick={onClose}>Cancelar</button><button className="btn" onClick={() => onSubmit(payload)}>Guardar movimiento</button></div>
+    <div className="modal-actions"><button className="btn secondary" onClick={onClose}>Cancelar</button><button className="btn" disabled={saving} onClick={() => onSubmit(payload)}>{saving ? 'Guardando...' : 'Guardar movimiento'}</button></div>
   </div></div>
 }
 

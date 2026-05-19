@@ -54,8 +54,12 @@ def decode_token(token: str) -> dict[str, Any]:
         raise HTTPException(status_code=401, detail="Sesión no válida o caducada.")
 
 
+def is_auth_enabled() -> bool:
+    return AUTH_ENABLED
+
+
 def get_authenticated_user_from_request(request: Request, db: Session) -> Usuario | None:
-    if not AUTH_ENABLED:
+    if not is_auth_enabled():
         return None
     auth = request.headers.get("Authorization", "")
     raw_token = None

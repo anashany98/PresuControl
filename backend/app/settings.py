@@ -1,4 +1,7 @@
 import json
+import threading
+from datetime import datetime, timedelta
+from typing import Optional
 from sqlalchemy.orm import Session
 from .models import AppSetting
 from .schemas import ESTADOS
@@ -27,15 +30,54 @@ DEFAULT_SETTINGS = {
     "dias_sin_actualizar_aviso": 3,
 }
 
+# Thread-safe in-memory cache with TTL
+class SettingsCache:
+    _lock = threading.Lock()
+    _cache: Optional[dict] = None
+    _expires_at: Optional[datetime] = None
+    TTL_SECONDS: int = 60
+
+    @classmethod
+    def get(cls, db: Session | None = None) -> dict:
+        """Get settings from cache or load from DB."""
+        now = datetime.now()
+        if cls._cache is not None and cls._expires_at is not None and now < cls._expires_at:
+            return cls._cache.copy()
+
+        with cls._lock:
+            now = datetime.now()
+            if cls._cache is not None and cls._expires_at is not None and now < cls._expires_at:
+                return cls._cache.copy()
+
+            owns_session = db is None
+            if db is None:
+                from .database import SessionLocal
+                db = SessionLocal()
+            try:
+                data = DEFAULT_SETTINGS.copy()
+                rows = db.query(AppSetting).all()
+                for row in rows:
+                    try:
+                        data[row.key] = json.loads(row.value)
+                    except json.JSONDecodeError:
+                        data[row.key] = row.value
+                cls._cache = data
+                cls._expires_at = now + timedelta(seconds=cls.TTL_SECONDS)
+            finally:
+                if owns_session:
+                    db.close()
+
+        return cls._cache.copy() if cls._cache else DEFAULT_SETTINGS.copy()
+
+    @classmethod
+    def invalidate(cls):
+        """Invalidate cache to force refresh on next call."""
+        cls._cache = None
+        cls._expires_at = None
+
 def get_settings(db: Session) -> dict:
-    data = DEFAULT_SETTINGS.copy()
-    rows = db.query(AppSetting).all()
-    for row in rows:
-        try:
-            data[row.key] = json.loads(row.value)
-        except json.JSONDecodeError:
-            data[row.key] = row.value
-    return data
+    """Get settings - uses cache for performance."""
+    return SettingsCache.get(db)
 
 def validate_settings_value(key: str, value) -> None:
     """Raise ValueError if setting is out of valid range."""
@@ -69,4 +111,5 @@ def update_settings(db: Session, payload: dict) -> dict:
         else:
             row.value = raw
     db.commit()
-    return get_settings(db)
+    SettingsCache.invalidate()
+    return SettingsCache.get()

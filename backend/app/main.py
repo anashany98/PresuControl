@@ -13,21 +13,32 @@ import pandas as pd
 from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
-from sqlalchemy import and_, func, or_, desc, asc, text
-from sqlalchemy.orm import Session
+from sqlalchemy import func, or_, desc, asc, text
+from sqlalchemy.orm import Session, selectinload
 
 from .database import Base, engine, get_db, SessionLocal
-from .models import Comentario, EmailNotificationLog, HistorialCambio, LoginAttempt, Presupuesto, RegistrationAttempt, Usuario
-from .rules import ACCEPTED_STATES, CLOSED_STATES, apply_derived_fields, calculate_risk, validate_presupuesto
+from .models import Comentario, EmailNotificationLog, EvaluacionProveedor, HistorialCambio, LoginAttempt, PedidoProveedor, Presupuesto, PresupuestoProveedor, Proveedor, RegistrationAttempt, Usuario
+from .rules import CLOSED_STATES, apply_derived_fields, calculate_risk, get_pedido_counts, validate_presupuesto
 from .schemas import (
     ComentarioCreate,
     ComentarioOut,
     ESTADOS,
+    EvaluacionProveedorCreate,
+    EvaluacionProveedorOut,
     HistorialOut,
     ImportPreview,
+    PedidoProveedorCreate,
+    PedidoProveedorOut,
+    PedidoProveedorUpdate,
     PresupuestoCreate,
     PresupuestoOut,
+    PresupuestoProveedorCreate,
+    PresupuestoProveedorOut,
+    PresupuestoProveedorUpdate,
     PresupuestoUpdate,
+    ProveedorCreate,
+    ProveedorOut,
+    ProveedorUpdate,
     SettingsOut,
     SettingsUpdate,
     UserRegister,
@@ -45,10 +56,10 @@ from .schemas import (
     PasswordAdminReset,
 )
 from .settings import get_settings, update_settings
-from .auth import AUTH_ENABLED, create_access_token, get_authenticated_user_from_request, hash_password, normalize_email, verify_password
-from .emailer import alert_email_body, parse_recipients, send_email
+from .auth import create_access_token, get_authenticated_user_from_request, hash_password, is_auth_enabled, normalize_email, verify_password
+from .emailer import parse_recipients, send_email
 from .notifications import build_alerts, money_at_risk, run_automatic_alert_checks, send_alert_digest, send_escalation_alerts, send_immediate_alerts_for_budget
-from .notifications_inapp import crear_notificacion, obtener_notificaciones, contar_sin_leer, marcar_leida, marcar_todas_leidas
+from .notifications_inapp import obtener_notificaciones, contar_sin_leer, marcar_leida, marcar_todas_leidas
 
 app = FastAPI(title="PresuControl API", version="1.3.0")
 
@@ -120,7 +131,7 @@ PUBLIC_PATHS = {"/health", "/auth/register", "/auth/login", "/auth/password/requ
 
 @app.middleware("http")
 async def require_auth_middleware(request: Request, call_next):
-    if not AUTH_ENABLED or request.method == "OPTIONS":
+    if not is_auth_enabled() or request.method == "OPTIONS":
         return await call_next(request)
     path = request.url.path.rstrip("/") or "/"
     if path in PUBLIC_PATHS or path.startswith("/docs") or path.startswith("/static"):
@@ -164,9 +175,21 @@ def enforce_login_rate_limit(email: str, request: Request, db: Session):
         LoginAttempt.window_start < window_start,
     ).delete()
     db.commit()
-    record = db.query(LoginAttempt).filter(LoginAttempt.ip == ip, LoginAttempt.email == email).first()
+
+    record = db.query(LoginAttempt).filter(
+        LoginAttempt.ip == ip,
+        LoginAttempt.email == email,
+    ).with_for_update().first()
+
     if record and record.attempts >= max_attempts:
         raise HTTPException(status_code=429, detail=f"Demasiados intentos. Prueba de nuevo en {minutes} minutos.")
+
+    if record:
+        record.attempts += 1
+        record.window_start = now
+    else:
+        db.add(LoginAttempt(ip=ip, email=email, attempts=1, window_start=now))
+    db.commit()
 
 
 def register_failed_login(email: str, request: Request, db: Session):
@@ -198,15 +221,20 @@ def enforce_registration_rate_limit(request: Request, db: Session):
         RegistrationAttempt.window_start < window_start,
     ).delete()
     db.commit()
-    record = db.query(RegistrationAttempt).filter(RegistrationAttempt.ip == ip).first()
+
+    record = db.query(RegistrationAttempt).filter(
+        RegistrationAttempt.ip == ip,
+    ).with_for_update().first()
+
     if record and record.attempts >= max_attempts:
         raise HTTPException(status_code=429, detail=f"Demasiados intentos de registro. Prueba de nuevo en {minutes} minutos.")
+
     if record:
         record.attempts += 1
-        db.commit()
+        record.window_start = now
     else:
         db.add(RegistrationAttempt(ip=ip, attempts=1, window_start=now))
-        db.commit()
+    db.commit()
 
 
 def hash_reset_token(token: str) -> str:
@@ -531,21 +559,43 @@ def apply_sort(query, sort_by: str | None, sort_dir: str | None):
 def health():
     return {"status": "ok", "service": "PresuControl"}
 
+
+# Debug endpoints - only available when DEBUG_MODE=true
+DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() in {"1", "true", "yes", "on"}
+
 @app.get("/debug/ping")
 def debug_ping():
+    if not DEBUG_MODE:
+        raise HTTPException(status_code=404, detail="Not found")
     return {"status": "ok", "message": "Backend is responding"}
 
 @app.get("/debug/verify-login")
 def debug_verify_login(request: Request, db: Session = Depends(get_db)):
+    if not DEBUG_MODE:
+        raise HTTPException(status_code=404, detail="Not found")
     try:
         user = get_authenticated_user_from_request(request, db)
         return {"ok": True, "user": user.email if user else None}
     except HTTPException as e:
         return {"ok": False, "error": e.detail}
 
+
+# Seed demo endpoint - only available when SEED_DEMO=true
+SEED_DEMO_MODE = os.getenv("SEED_DEMO", "false").lower() in {"1", "true", "yes", "on"}
+
 @app.get("/settings", response_model=SettingsOut)
 def read_settings(db: Session = Depends(get_db)):
-    return get_settings(db)
+    settings = get_settings(db)
+    return {
+        **settings,
+        "timezone": os.getenv("APP_TIMEZONE", "Europe/Madrid"),
+        "public_url": os.getenv("APP_PUBLIC_URL", "http://localhost:8088"),
+        "smtp_configured": bool(os.getenv("SMTP_HOST") and os.getenv("SMTP_FROM")),
+        "smtp_host": os.getenv("SMTP_HOST") or None,
+        "smtp_port": int(os.getenv("SMTP_PORT", "587")),
+        "smtp_from": os.getenv("SMTP_FROM") or None,
+        "smtp_tls": os.getenv("SMTP_TLS", "true").lower() in {"1", "true", "yes", "on"},
+    }
 
 @app.put("/settings", response_model=SettingsOut)
 def save_settings(payload: SettingsUpdate, request: Request, db: Session = Depends(get_db)):
@@ -567,14 +617,18 @@ def list_presupuestos(
     sort_dir: str | None = "desc",
     limit: int = Query(250, ge=1, le=2000),
 ):
-    q = apply_filters(base_query(db, include_archivados), search, estado, prioridad, gestor, proveedor, incidencia)
+    q = apply_filters(db.query(Presupuesto).options(selectinload(Presupuesto.pedidos)), search, estado, prioridad, gestor, proveedor, incidencia)
+    if not include_archivados:
+        q = q.filter(Presupuesto.archivado == False)  # noqa: E712
     if ocultar_cerrados:
         q = q.filter(Presupuesto.estado.notin_(list(CLOSED_STATES)))
     q = apply_sort(q, sort_by, sort_dir)
     rows = q.limit(limit).all()
+    # OPTIMIZACIÓN: Obtener settings UNA vez, no por cada fila
     settings = get_settings(db)
+    pedido_counts = get_pedido_counts(db, [row.id for row in rows])
     for row in rows:
-        row.prioridad_calculada, row.dias_parado = calculate_risk(row, db, settings)
+        row.prioridad_calculada, row.dias_parado = calculate_risk(row, db, settings, pedido_counts)
     return rows
 
 
@@ -594,16 +648,18 @@ def list_presupuestos_page(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=10, le=200),
 ):
-    q = apply_filters(base_query(db, include_archivados), search, estado, prioridad, gestor, proveedor, incidencia)
+    q = apply_filters(base_query(db, include_archivados).options(selectinload(Presupuesto.pedidos)), search, estado, prioridad, gestor, proveedor, incidencia)
     if ocultar_cerrados:
         q = q.filter(Presupuesto.estado.notin_(list(CLOSED_STATES)))
     total = q.count()
     importe_total = float(q.with_entities(func.coalesce(func.sum(Presupuesto.importe), 0)).scalar() or 0)
     q = apply_sort(q, sort_by, sort_dir)
     rows = q.offset((page - 1) * page_size).limit(page_size).all()
+    # OPTIMIZACIÓN: Obtener settings UNA vez, no por cada fila
     settings = get_settings(db)
+    pedido_counts = get_pedido_counts(db, [row.id for row in rows])
     for row in rows:
-        row.prioridad_calculada, row.dias_parado = calculate_risk(row, db, settings)
+        row.prioridad_calculada, row.dias_parado = calculate_risk(row, db, settings, pedido_counts)
     return {
         "items": rows,
         "total": total,
@@ -648,17 +704,16 @@ def create_presupuesto(payload: PresupuestoCreate, request: Request, db: Session
 
 @app.get("/presupuestos/{presupuesto_id}", response_model=PresupuestoOut)
 def read_presupuesto(presupuesto_id: int, db: Session = Depends(get_db)):
-    obj = db.get(Presupuesto, presupuesto_id)
+    obj = db.query(Presupuesto).options(selectinload(Presupuesto.pedidos)).filter(Presupuesto.id == presupuesto_id).first()
     if not obj:
         raise HTTPException(status_code=404, detail="Presupuesto no encontrado.")
     settings = get_settings(db)
     obj.prioridad_calculada, obj.dias_parado = calculate_risk(obj, db, settings)
-    db.commit()
     return obj
 
 @app.patch("/presupuestos/{presupuesto_id}", response_model=PresupuestoOut)
 def update_presupuesto(presupuesto_id: int, payload: PresupuestoUpdate, request: Request, db: Session = Depends(get_db)):
-    obj = db.get(Presupuesto, presupuesto_id)
+    obj = db.query(Presupuesto).options(selectinload(Presupuesto.pedidos)).filter(Presupuesto.id == presupuesto_id).first()
     if not obj:
         raise HTTPException(status_code=404, detail="Presupuesto no encontrado.")
 
@@ -724,11 +779,25 @@ def quick_action(presupuesto_id: int, payload: QuickAction, request: Request, db
         obj.siguiente_accion = payload.siguiente_accion or obj.siguiente_accion or "Hacer pedido proveedor"
         obj.fecha_limite_siguiente_accion = payload.fecha_limite_siguiente_accion or obj.fecha_limite_siguiente_accion or date.today()
     elif action == "crear_pedido_proveedor":
-        obj.estado = "Pedido proveedor realizado"
-        obj.pedido_proveedor_realizado = True
-        obj.proveedor = payload.proveedor or obj.proveedor
-        obj.numero_pedido_proveedor = payload.numero_pedido_proveedor or obj.numero_pedido_proveedor
-        obj.fecha_pedido_proveedor = payload.fecha_pedido_proveedor or obj.fecha_pedido_proveedor or date.today()
+        nuevo_pedido = PedidoProveedor(
+            presupuesto_id=obj.id,
+            proveedor=payload.proveedor or obj.proveedor or "Sin especificar",
+            numero_pedido=payload.numero_pedido_proveedor,
+            fecha_pedido=payload.fecha_pedido_proveedor or date.today(),
+            estado_entrega="pendiente",
+        )
+        db.add(nuevo_pedido)
+        db.add(HistorialCambio(
+            presupuesto_id=obj.id,
+            campo="pedido_proveedor",
+            valor_anterior=None,
+            valor_nuevo=f"{nuevo_pedido.proveedor} - {nuevo_pedido.numero_pedido or 'sin nº'}",
+            descripcion=f"Pedido a proveedor '{nuevo_pedido.proveedor}' creado desde acción rápida.",
+            nombre_opcional=actor.get("nombre_opcional"),
+            usuario_id=actor.get("usuario_id"),
+            usuario_nombre=actor.get("usuario_nombre"),
+            usuario_email=actor.get("usuario_email"),
+        ))
         actor_name = actor_label(actor)
         if not payload.responsable_actual or payload.responsable_actual == "Compras":
             obj.responsable_actual = actor_name or "Compras"
@@ -837,6 +906,153 @@ def add_comentario(presupuesto_id: int, payload: ComentarioCreate, request: Requ
 def list_historial(presupuesto_id: int, db: Session = Depends(get_db)):
     return db.query(HistorialCambio).filter(HistorialCambio.presupuesto_id == presupuesto_id).order_by(desc(HistorialCambio.creado_en)).all()
 
+
+@app.get("/presupuestos/{presupuesto_id}/pedidos", response_model=list[PedidoProveedorOut])
+def list_pedidos(presupuesto_id: int, db: Session = Depends(get_db)):
+    if not db.get(Presupuesto, presupuesto_id):
+        raise HTTPException(status_code=404, detail="Presupuesto no encontrado.")
+    return db.query(PedidoProveedor).filter(PedidoProveedor.presupuesto_id == presupuesto_id).order_by(desc(PedidoProveedor.creado_en)).all()
+
+
+@app.post("/presupuestos/{presupuesto_id}/pedidos", response_model=PedidoProveedorOut, status_code=201)
+def create_pedido(presupuesto_id: int, payload: PedidoProveedorCreate, request: Request, db: Session = Depends(get_db)):
+    presupuesto = db.get(Presupuesto, presupuesto_id)
+    if not presupuesto:
+        raise HTTPException(status_code=404, detail="Presupuesto no encontrado.")
+    actor = current_actor(request)
+    obj = PedidoProveedor(
+        presupuesto_id=presupuesto_id,
+        proveedor=payload.proveedor,
+        numero_pedido=payload.numero_pedido,
+        fecha_pedido=payload.fecha_pedido,
+        importe=payload.importe,
+        estado_entrega=payload.estado_entrega or "pendiente",
+        fecha_entrega_prevista=payload.fecha_entrega_prevista,
+        fecha_entrega_real=payload.fecha_entrega_real,
+        observaciones=payload.observaciones,
+    )
+    db.add(obj)
+    db.add(HistorialCambio(
+        presupuesto_id=presupuesto_id,
+        campo="pedido_proveedor",
+        valor_anterior=None,
+        valor_nuevo=f"{obj.proveedor} - {obj.numero_pedido or 'sin nº'}",
+        descripcion=f"Pedido a proveedor '{obj.proveedor}' creado.",
+        nombre_opcional=actor.get("nombre_opcional"),
+        usuario_id=actor.get("usuario_id"),
+        usuario_nombre=actor.get("usuario_nombre"),
+        usuario_email=actor.get("usuario_email"),
+    ))
+    db.commit()
+    db.refresh(obj)
+    return obj
+
+
+@app.patch("/pedidos/{pedido_id}", response_model=PedidoProveedorOut)
+def update_pedido(pedido_id: int, payload: PedidoProveedorUpdate, request: Request, db: Session = Depends(get_db)):
+    obj = db.get(PedidoProveedor, pedido_id)
+    if not obj:
+        raise HTTPException(status_code=404, detail="Pedido no encontrado.")
+    actor = current_actor(request)
+    data = payload.model_dump(exclude_unset=True)
+    for key, value in data.items():
+        setattr(obj, key, value)
+    db.flush()
+    db.add(HistorialCambio(
+        presupuesto_id=obj.presupuesto_id,
+        campo="pedido_proveedor",
+        valor_anterior=None,
+        valor_nuevo=f"{obj.proveedor} - {obj.numero_pedido or 'sin nº'}",
+        descripcion=f"Pedido a proveedor '{obj.proveedor}' actualizado.",
+        nombre_opcional=actor.get("nombre_opcional"),
+        usuario_id=actor.get("usuario_id"),
+        usuario_nombre=actor.get("usuario_nombre"),
+        usuario_email=actor.get("usuario_email"),
+    ))
+    db.commit()
+    db.refresh(obj)
+    return obj
+
+
+@app.delete("/pedidos/{pedido_id}")
+def delete_pedido(pedido_id: int, request: Request, db: Session = Depends(get_db)):
+    obj = db.get(PedidoProveedor, pedido_id)
+    if not obj:
+        raise HTTPException(status_code=404, detail="Pedido no encontrado.")
+    actor = current_actor(request)
+    db.add(HistorialCambio(
+        presupuesto_id=obj.presupuesto_id,
+        campo="pedido_proveedor",
+        valor_anterior=f"{obj.proveedor} - {obj.numero_pedido or 'sin nº'}",
+        valor_nuevo=None,
+        descripcion=f"Pedido a proveedor '{obj.proveedor}' eliminado.",
+        nombre_opcional=actor.get("nombre_opcional"),
+        usuario_id=actor.get("usuario_id"),
+        usuario_nombre=actor.get("usuario_nombre"),
+        usuario_email=actor.get("usuario_email"),
+    ))
+    db.delete(obj)
+    db.commit()
+    return {"ok": True}
+
+
+@app.post("/presupuestos/{presupuesto_id}/proveedores", response_model=PresupuestoProveedorOut, tags=["proveedores"])
+def add_proveedor_presupuesto(
+    presupuesto_id: int,
+    payload: PresupuestoProveedorCreate,
+    db: Session = Depends(get_db),
+):
+    pp = db.query(PresupuestoProveedor).filter(
+        PresupuestoProveedor.presupuesto_id == presupuesto_id,
+        PresupuestoProveedor.proveedor_id == payload.proveedor_id
+    ).first()
+    if pp:
+        raise HTTPException(status_code=409, detail="Este proveedor ya está asociado")
+    pp = PresupuestoProveedor(presupuesto_id=presupuesto_id, **payload.model_dump())
+    db.add(pp)
+    db.commit()
+    db.refresh(pp)
+    return pp
+
+
+@app.get("/presupuestos/{presupuesto_id}/proveedores", response_model=list[PresupuestoProveedorOut], tags=["proveedores"])
+def list_proveedores_presupuesto(presupuesto_id: int, db: Session = Depends(get_db)):
+    return db.query(PresupuestoProveedor).filter(PresupuestoProveedor.presupuesto_id == presupuesto_id).all()
+
+
+@app.patch("/presupuestos/{presupuesto_id}/proveedores/{proveedor_id}", response_model=PresupuestoProveedorOut, tags=["proveedores"])
+def update_proveedor_presupuesto(
+    presupuesto_id: int,
+    proveedor_id: int,
+    payload: PresupuestoProveedorUpdate,
+    db: Session = Depends(get_db),
+):
+    pp = db.query(PresupuestoProveedor).filter(
+        PresupuestoProveedor.presupuesto_id == presupuesto_id,
+        PresupuestoProveedor.proveedor_id == proveedor_id
+    ).first()
+    if not pp:
+        raise HTTPException(status_code=404, detail="Asociación no encontrada")
+    for key, value in payload.model_dump(exclude_unset=True).items():
+        setattr(pp, key, value)
+    db.commit()
+    db.refresh(pp)
+    return pp
+
+
+@app.delete("/presupuestos/{presupuesto_id}/proveedores/{proveedor_id}", tags=["proveedores"])
+def remove_proveedor_presupuesto(presupuesto_id: int, proveedor_id: int, db: Session = Depends(get_db)):
+    pp = db.query(PresupuestoProveedor).filter(
+        PresupuestoProveedor.presupuesto_id == presupuesto_id,
+        PresupuestoProveedor.proveedor_id == proveedor_id
+    ).first()
+    if not pp:
+        raise HTTPException(status_code=404, detail="Asociación no encontrada")
+    db.delete(pp)
+    db.commit()
+    return {"ok": True}
+
+
 @app.get("/mi-mesa")
 def mi_mesa(request: Request, db: Session = Depends(get_db), responsable: str | None = None):
     user = getattr(request.state, "user", None)
@@ -851,9 +1067,10 @@ def mi_mesa(request: Request, db: Session = Depends(get_db), responsable: str | 
     rows = q.all()
     today = date.today()
     settings = get_settings(db)
+    pedido_counts = get_pedido_counts(db, [r.id for r in rows])
     out = []
     for r in rows:
-        r.prioridad_calculada, r.dias_parado = calculate_risk(r, db, settings)
+        r.prioridad_calculada, r.dias_parado = calculate_risk(r, db, settings, pedido_counts)
         if (
             r.fecha_limite_siguiente_accion is None
             or r.fecha_limite_siguiente_accion <= today
@@ -1087,9 +1304,9 @@ def mark_all_read(db: Session = Depends(get_db), user: Usuario = Depends(get_cur
 def dashboard(db: Session = Depends(get_db)):
     rows = base_query(db).all()
     settings = get_settings(db)
+    pedido_counts = get_pedido_counts(db, [row.id for row in rows])
     for row in rows:
-        row.prioridad_calculada, row.dias_parado = calculate_risk(row, db, settings)
-    db.commit()
+        row.prioridad_calculada, row.dias_parado = calculate_risk(row, db, settings, pedido_counts)
 
     current_month = date.today().replace(day=1)
     active = [r for r in rows if r.estado not in CLOSED_STATES]
@@ -1131,8 +1348,9 @@ def riesgo(db: Session = Depends(get_db)):
     risky = []
     today = date.today()
     settings = get_settings(db)
+    pedido_counts = get_pedido_counts(db, [r.id for r in rows])
     for r in rows:
-        r.prioridad_calculada, r.dias_parado = calculate_risk(r, db, settings)
+        r.prioridad_calculada, r.dias_parado = calculate_risk(r, db, settings, pedido_counts)
         conditions = [
             r.fecha_aceptacion and not r.pedido_proveedor_realizado,
             r.pedido_proveedor_realizado and not r.plazo_proveedor and r.estado not in CLOSED_STATES,
@@ -1142,7 +1360,6 @@ def riesgo(db: Session = Depends(get_db)):
         ]
         if any(conditions):
             risky.append(r)
-    db.commit()
     return sorted([serialize(r) for r in risky], key=lambda x: ["Verde", "Amarillo", "Naranja", "Rojo", "Crítico"].index(x["prioridad_calculada"]), reverse=True)
 
 @app.get("/hoy")
@@ -1150,15 +1367,15 @@ def hoy(db: Session = Depends(get_db)):
     rows = base_query(db).all()
     today = date.today()
     settings = get_settings(db)
+    pedido_counts = get_pedido_counts(db, [r.id for r in rows])
     output = []
     for r in rows:
-        r.prioridad_calculada, r.dias_parado = calculate_risk(r, db, settings)
+        r.prioridad_calculada, r.dias_parado = calculate_risk(r, db, settings, pedido_counts)
         due_today = r.fecha_limite_siguiente_accion and r.fecha_limite_siguiente_accion <= today
         serious = r.prioridad_calculada in {"Rojo", "Crítico"}
         accepted_no_order = r.fecha_aceptacion and not r.pedido_proveedor_realizado
         if r.estado not in CLOSED_STATES and (due_today or serious or accepted_no_order or r.incidencia):
             output.append(serialize(r))
-    db.commit()
     rank = {"Crítico": 5, "Rojo": 4, "Naranja": 3, "Amarillo": 2, "Verde": 1}
     return sorted(output, key=lambda x: (rank.get(x["prioridad_calculada"], 0), x.get("dias_parado") or 0), reverse=True)
 
@@ -1167,9 +1384,9 @@ def hoy(db: Session = Depends(get_db)):
 def aceptados_sin_pedido(db: Session = Depends(get_db)):
     rows = base_query(db).filter(Presupuesto.fecha_aceptacion.isnot(None), Presupuesto.pedido_proveedor_realizado == False).all()  # noqa: E712
     settings = get_settings(db)
+    pedido_counts = get_pedido_counts(db, [r.id for r in rows])
     for r in rows:
-        r.prioridad_calculada, r.dias_parado = calculate_risk(r, db, settings)
-    db.commit()
+        r.prioridad_calculada, r.dias_parado = calculate_risk(r, db, settings, pedido_counts)
     return sorted([serialize(r) for r in rows], key=lambda x: x.get("dias_parado") or 0, reverse=True)
 
 
@@ -1181,13 +1398,18 @@ def avisos(db: Session = Depends(get_db)):
 @app.get("/avisos/historial")
 def avisos_historial(db: Session = Depends(get_db)):
     rows = db.query(EmailNotificationLog).order_by(desc(EmailNotificationLog.creado_en)).limit(200).all()
+    presupuesto_ids = [r.presupuesto_id for r in rows if r.presupuesto_id]
+    presupuestos = {
+        p.id: p
+        for p in db.query(Presupuesto).filter(Presupuesto.id.in_(presupuesto_ids)).all()
+    } if presupuesto_ids else {}
     return [{
         "id": r.id,
         "tipo": r.tipo,
         "presupuesto_id": r.presupuesto_id,
-        "numero_presupuesto": r.presupuesto.presupuesto if r.presupuesto else str(r.presupuesto_id),
-        "cliente": r.presupuesto.cliente if r.presupuesto else "",
-        "prioridad_calculada": r.presupuesto.prioridad_calculada if r.presupuesto else "",
+        "numero_presupuesto": presupuestos[r.presupuesto_id].numero_presupuesto if r.presupuesto_id in presupuestos else str(r.presupuesto_id or ""),
+        "cliente": presupuestos[r.presupuesto_id].cliente if r.presupuesto_id in presupuestos else "",
+        "prioridad_calculada": presupuestos[r.presupuesto_id].prioridad_calculada if r.presupuesto_id in presupuestos else "",
         "enviado_a": r.sent_to,
         "enviado_en": r.creado_en.isoformat() if r.creado_en else None,
         "status": r.status,
@@ -1229,9 +1451,9 @@ def email_test(payload: EmailTestPayload, db: Session = Depends(get_db)):
 def reports(db: Session = Depends(get_db)):
     rows = base_query(db).all()
     settings = get_settings(db)
+    pedido_counts = get_pedido_counts(db, [r.id for r in rows])
     for r in rows:
-        r.prioridad_calculada, r.dias_parado = calculate_risk(r, db, settings)
-    db.commit()
+        r.prioridad_calculada, r.dias_parado = calculate_risk(r, db, settings, pedido_counts)
 
     def group_count(attr: str):
         data: dict[str, int] = {}
@@ -1269,13 +1491,127 @@ def reports(db: Session = Depends(get_db)):
     }
 
 
+REPORT_LIST_TYPES = {
+    "atrasados",
+    "cancelados",
+    "sin_pedido",
+    "sin_aceptacion",
+    "en_riesgo",
+    "pedidos_pendientes",
+    "pedidos_completados",
+}
+
+
+def get_report_rows(
+    db: Session,
+    report_type: str,
+    gestor: str | None = None,
+    fecha_from: date | None = None,
+    fecha_to: date | None = None,
+    dias: int = 7,
+) -> list[Presupuesto]:
+    if report_type not in REPORT_LIST_TYPES:
+        raise HTTPException(status_code=422, detail="Tipo de reporte no válido.")
+
+    rows = base_query(db).options(selectinload(Presupuesto.pedidos)).all()
+    today = date.today()
+    settings = get_settings(db)
+    pedido_counts = get_pedido_counts(db, [r.id for r in rows])
+    for row in rows:
+        row.prioridad_calculada, row.dias_parado = calculate_risk(row, db, settings, pedido_counts)
+
+    if report_type == "atrasados":
+        rows = [
+            r for r in rows
+            if r.estado not in CLOSED_STATES
+            and r.fecha_limite_siguiente_accion
+            and r.fecha_limite_siguiente_accion < today
+        ]
+    elif report_type == "cancelados":
+        rows = [r for r in rows if r.estado == "Cancelado / rechazado"]
+    elif report_type == "sin_pedido":
+        rows = [r for r in rows if r.fecha_aceptacion and not pedido_counts.get(r.id, 0)]
+    elif report_type == "sin_aceptacion":
+        rows = [
+            r for r in rows
+            if r.estado == "Enviado al cliente"
+            and r.fecha_envio_cliente
+            and (today - r.fecha_envio_cliente).days >= dias
+        ]
+    elif report_type == "en_riesgo":
+        rows = [r for r in rows if r.prioridad_calculada in {"Rojo", "Crítico"} or r.incidencia]
+    elif report_type == "pedidos_pendientes":
+        rows = [r for r in rows if any(p.estado_entrega != "completado" for p in (r.pedidos or []))]
+    elif report_type == "pedidos_completados":
+        rows = [r for r in rows if r.pedidos and all(p.estado_entrega == "completado" for p in r.pedidos)]
+
+    if gestor:
+        rows = [r for r in rows if r.gestor == gestor]
+    if fecha_from:
+        rows = [r for r in rows if r.fecha_limite_siguiente_accion and r.fecha_limite_siguiente_accion >= fecha_from]
+    if fecha_to:
+        rows = [r for r in rows if r.fecha_limite_siguiente_accion and r.fecha_limite_siguiente_accion <= fecha_to]
+    return sorted(rows, key=lambda r: (r.fecha_limite_siguiente_accion or date.max, r.numero_presupuesto))
+
+
+@app.get("/reports/list")
+def reports_list(
+    type: str = Query(..., pattern="^(atrasados|cancelados|sin_pedido|sin_aceptacion|en_riesgo|pedidos_pendientes|pedidos_completados)$"),
+    db: Session = Depends(get_db),
+    gestor: str | None = None,
+    fecha_from: date | None = None,
+    fecha_to: date | None = None,
+    dias: int = Query(7, ge=1, le=365),
+):
+    return [serialize(row) for row in get_report_rows(db, type, gestor, fecha_from, fecha_to, dias)]
+
+
+@app.post("/reports/export-list")
+def export_report_list(payload: dict[str, Any]):
+    rows = payload.get("items") or []
+    filename = str(payload.get("filename") or "presucontrol_reporte.xlsx")
+    safe_filename = "".join(ch for ch in filename if ch.isalnum() or ch in {"-", "_", "."}) or "presucontrol_reporte.xlsx"
+    export_rows = [
+        {
+            "Nº Presupuesto": row.get("numero_presupuesto"),
+            "Cliente": row.get("cliente"),
+            "Obra/Referencia": row.get("obra_referencia"),
+            "Gestor": row.get("gestor"),
+            "Estado": row.get("estado"),
+            "Importe": row.get("importe"),
+            "Prioridad": row.get("prioridad_calculada"),
+            "Fecha límite": row.get("fecha_limite_siguiente_accion"),
+        }
+        for row in rows
+    ]
+    df = pd.DataFrame(export_rows, columns=[
+        "Nº Presupuesto",
+        "Cliente",
+        "Obra/Referencia",
+        "Gestor",
+        "Estado",
+        "Importe",
+        "Prioridad",
+        "Fecha límite",
+    ])
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        df.to_excel(writer, index=False, sheet_name="Reporte")
+    output.seek(0)
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={safe_filename}"},
+    )
+
+
 @app.get("/reports/export")
 def export_reports(db: Session = Depends(get_db)):
     rows = base_query(db).all()
     settings = get_settings(db)
+    pedido_counts = get_pedido_counts(db, [r.id for r in rows])
     for r in rows:
-        r.prioridad_calculada, r.dias_parado = calculate_risk(r, db, settings)
-    db.commit()
+        r.prioridad_calculada, r.dias_parado = calculate_risk(r, db, settings, pedido_counts)
 
     accepted_no_order = [r for r in rows if r.fecha_aceptacion and not r.pedido_proveedor_realizado]
     accepted_with_order = [r for r in rows if r.fecha_aceptacion and r.fecha_pedido_proveedor]
@@ -1292,12 +1628,10 @@ def export_reports(db: Session = Depends(get_db)):
             cancelled_by_month[key] = cancelled_by_month.get(key, 0) + 1
 
     output = io.BytesIO()
-    workbook_formats = {}
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
         workbook = writer.book
         header_format = workbook.add_format({"bold": True, "bg_color": "#F3F4F6", "border": 1})
         money_format = workbook.add_format({"num_format": "#,##0.00€"})
-        date_format = workbook.add_format({"num_format": "yyyy-mm-dd"})
         int_format = workbook.add_format({"num_format": "#,##0"})
 
         ws_summary = writer.sheets.get("Resumen", None)
@@ -1433,11 +1767,21 @@ def export_presupuestos(
         headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
 
+MAX_IMPORT_FILE_SIZE = 10 * 1024 * 1024
+ALLOWED_IMPORT_EXTENSIONS = {".csv", ".xlsx", ".xls"}
+
+
 def parse_upload(file: UploadFile) -> pd.DataFrame:
+    filename = file.filename or ""
+    _, ext = os.path.splitext(filename.lower())
+    if ext not in ALLOWED_IMPORT_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="Formato no soportado. Usa CSV, XLSX o XLS.")
     raw = file.file.read()
-    if file.filename.lower().endswith(".csv"):
+    if len(raw) > MAX_IMPORT_FILE_SIZE:
+        raise HTTPException(status_code=400, detail="Archivo demasiado grande. Máximo 10MB.")
+    if ext == ".csv":
         return pd.read_csv(io.BytesIO(raw))
-    if file.filename.lower().endswith((".xlsx", ".xls")):
+    if ext in {".xlsx", ".xls"}:
         return pd.read_excel(io.BytesIO(raw))
     raise HTTPException(status_code=400, detail="Formato no soportado. Usa CSV, XLSX o XLS.")
 
@@ -1604,6 +1948,8 @@ def import_confirm(request: Request, file: UploadFile = File(...), db: Session =
 
 @app.post("/seed-demo")
 def seed_demo(db: Session = Depends(get_db)):
+    if not SEED_DEMO_MODE:
+        raise HTTPException(status_code=404, detail="Not found")
     if db.query(Presupuesto).count() > 0:
         return {"ok": False, "message": "La base de datos ya contiene presupuestos."}
     today = date.today()
@@ -1617,3 +1963,357 @@ def seed_demo(db: Session = Depends(get_db)):
         db.add(s)
     db.commit()
     return {"ok": True, "insertados": len(samples)}
+
+
+# ==================== PROVEEDORES ====================
+
+@app.get("/proveedores", response_model=list[ProveedorOut])
+def list_proveedores(
+    db: Session = Depends(get_db),
+    search: str | None = None,
+    activo: bool | None = None,
+    limit: int = Query(100, ge=1, le=500),
+):
+    q = db.query(Proveedor)
+    if activo is not None:
+        q = q.filter(Proveedor.activo == activo)
+    if search:
+        like = f"%{search.strip()}%"
+        q = q.filter(or_(
+            Proveedor.nombre.ilike(like),
+            Proveedor.contacto.ilike(like),
+            Proveedor.email.ilike(like),
+        ))
+    return q.order_by(Proveedor.nombre).limit(limit).all()
+
+
+@app.get("/proveedores/{proveedor_id}", response_model=ProveedorOut)
+def get_proveedor(proveedor_id: int, db: Session = Depends(get_db)):
+    proveedor = db.get(Proveedor, proveedor_id)
+    if not proveedor:
+        raise HTTPException(status_code=404, detail="Proveedor no encontrado.")
+    return proveedor
+
+
+@app.post("/proveedores", response_model=ProveedorOut, status_code=201)
+def create_proveedor(payload: ProveedorCreate, request: Request, db: Session = Depends(get_db)):
+    exists = db.query(Proveedor).filter(Proveedor.nombre == payload.nombre.strip()).first()
+    if exists:
+        raise HTTPException(status_code=409, detail="Ya existe un proveedor con ese nombre.")
+    obj = Proveedor(
+        nombre=payload.nombre.strip(),
+        contacto=payload.contacto,
+        email=payload.email,
+        telefono=payload.telefono,
+        direccion=payload.direccion,
+        notas=payload.notas,
+    )
+    db.add(obj)
+    db.commit()
+    db.refresh(obj)
+    return obj
+
+
+@app.patch("/proveedores/{proveedor_id}", response_model=ProveedorOut)
+def update_proveedor(proveedor_id: int, payload: ProveedorUpdate, request: Request, db: Session = Depends(get_db)):
+    proveedor = db.get(Proveedor, proveedor_id)
+    if not proveedor:
+        raise HTTPException(status_code=404, detail="Proveedor no encontrado.")
+    data = payload.model_dump(exclude_unset=True)
+    for key, value in data.items():
+        if isinstance(value, str):
+            value = value.strip()
+        setattr(proveedor, key, value)
+    db.commit()
+    db.refresh(proveedor)
+    return proveedor
+
+
+@app.delete("/proveedores/{proveedor_id}")
+def delete_proveedor(proveedor_id: int, request: Request, db: Session = Depends(get_db)):
+    proveedor = db.get(Proveedor, proveedor_id)
+    if not proveedor:
+        raise HTTPException(status_code=404, detail="Proveedor no encontrado.")
+    proveedor.activo = False
+    db.commit()
+    return {"ok": True}
+
+
+@app.get("/proveedores/{proveedor_id}/evaluaciones", response_model=list[EvaluacionProveedorOut])
+def list_evaluaciones_proveedor(proveedor_id: int, db: Session = Depends(get_db)):
+    proveedor = db.get(Proveedor, proveedor_id)
+    if not proveedor:
+        raise HTTPException(status_code=404, detail="Proveedor no encontrado.")
+    return db.query(EvaluacionProveedor).filter(
+        EvaluacionProveedor.proveedor_id == proveedor_id
+    ).order_by(desc(EvaluacionProveedor.creado_en)).all()
+
+
+@app.post("/proveedores/{proveedor_id}/evaluaciones", response_model=EvaluacionProveedorOut, status_code=201)
+def create_evaluacion_proveedor(
+    proveedor_id: int,
+    payload: EvaluacionProveedorCreate,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    proveedor = db.get(Proveedor, proveedor_id)
+    if not proveedor:
+        raise HTTPException(status_code=404, detail="Proveedor no encontrado.")
+    
+    evaluacion = EvaluacionProveedor(
+        proveedor_id=proveedor_id,
+        pedido_id=payload.pedido_id,
+        puntualidad=payload.puntualidad,
+        calidad=payload.calidad,
+        comunicacion=payload.comunicacion,
+        comentario=payload.comentario,
+        evaluado_por=payload.evaluado_por,
+    )
+    db.add(evaluacion)
+    
+    # Actualizar promedio del proveedor
+    evaluaciones = db.query(EvaluacionProveedor).filter(
+        EvaluacionProveedor.proveedor_id == proveedor_id
+    ).all()
+    total = len(evaluaciones) + 1
+    promedio = (
+        sum(e.puntualidad + e.calidad + e.comunicacion for e in evaluaciones) +
+        (payload.puntualidad + payload.calidad + payload.comunicacion)
+    ) / (total * 3)
+    
+    proveedor.evaluacion_promedio = round(promedio, 2)
+    proveedor.total_evaluaciones = total
+    
+    db.commit()
+    db.refresh(evaluacion)
+    return evaluacion
+
+
+@app.get("/proveedores/{proveedor_id}/estadisticas")
+def estadisticas_proveedor(proveedor_id: int, db: Session = Depends(get_db)):
+    proveedor = db.get(Proveedor, proveedor_id)
+    if not proveedor:
+        raise HTTPException(status_code=404, detail="Proveedor no encontrado.")
+    
+    evaluaciones = db.query(EvaluacionProveedor).filter(
+        EvaluacionProveedor.proveedor_id == proveedor_id
+    ).all()
+    
+    if not evaluaciones:
+        return {
+            "proveedor_id": proveedor_id,
+            "nombre": proveedor.nombre,
+            "total_evaluaciones": 0,
+            "promedios": {"puntualidad": 0, "calidad": 0, "comunicacion": 0},
+            "distribucion": {"5_estrellas": 0, "4_estrellas": 0, "3_estrellas": 0, "2_estrellas": 0, "1_estrella": 0}
+        }
+    
+    avg_punt = sum(e.puntualidad for e in evaluaciones) / len(evaluaciones)
+    avg_cal = sum(e.calidad for e in evaluaciones) / len(evaluaciones)
+    avg_com = sum(e.comunicacion for e in evaluaciones) / len(evaluaciones)
+    
+    dist = {5: 0, 4: 0, 3: 0, 2: 0, 1: 0}
+    for e in evaluaciones:
+        avg = (e.puntualidad + e.calidad + e.comunicacion) / 3
+        if avg >= 4.5:
+            dist[5] += 1
+        elif avg >= 3.5:
+            dist[4] += 1
+        elif avg >= 2.5:
+            dist[3] += 1
+        elif avg >= 1.5:
+            dist[2] += 1
+        else:
+            dist[1] += 1
+    
+    return {
+        "proveedor_id": proveedor_id,
+        "nombre": proveedor.nombre,
+        "total_evaluaciones": len(evaluaciones),
+        "promedios": {
+            "puntualidad": round(avg_punt, 2),
+            "calidad": round(avg_cal, 2),
+            "comunicacion": round(avg_com, 2),
+        },
+        "distribucion": {
+            "5_estrellas": dist[5],
+            "4_estrellas": dist[4],
+            "3_estrellas": dist[3],
+            "2_estrellas": dist[2],
+            "1_estrella": dist[1],
+        }
+    }
+
+
+# ==================== EXPORTACIÓN AVANZADA ====================
+
+@app.get("/presupuestos/export/excel")
+def export_presupuestos_excel(
+    db: Session = Depends(get_db),
+    search: str | None = None,
+    estado: str | None = None,
+    prioridad: str | None = None,
+    gestor: str | None = None,
+    proveedor: str | None = None,
+    incidencia: bool | None = None,
+    include_archivados: bool = False,
+    ocultar_cerrados: bool = True,
+):
+    q = apply_filters(base_query(db, include_archivados), search, estado, prioridad, gestor, proveedor, incidencia)
+    if ocultar_cerrados:
+        q = q.filter(Presupuesto.estado.notin_(list(CLOSED_STATES)))
+    rows = q.order_by(desc(Presupuesto.fecha_ultima_actualizacion)).limit(5000).all()
+    
+    # OPTIMIZACIÓN: Obtener settings UNA vez
+    settings = get_settings(db)
+    for row in rows:
+        row.prioridad_calculada, row.dias_parado = calculate_risk(row, db, settings)
+    
+    df = pd.DataFrame([{
+        "ID": r.id,
+        "Nº Presupuesto": r.numero_presupuesto,
+        "Cliente": r.cliente,
+        "Obra/Referencia": r.obra_referencia,
+        "Gestor": r.gestor,
+        "Fecha Presupuesto": r.fecha_presupuesto,
+        "Fecha Envío Cliente": r.fecha_envio_cliente,
+        "Fecha Aceptación": r.fecha_aceptacion,
+        "Importe (€)": r.importe,
+        "Estado": r.estado,
+        "Proveedor": r.proveedor,
+        "Pedido Realizado": "Sí" if r.pedido_proveedor_realizado else "No",
+        "Nº Pedido Proveedor": r.numero_pedido_proveedor,
+        "Fecha Pedido Proveedor": r.fecha_pedido_proveedor,
+        "Plazo Proveedor": r.plazo_proveedor,
+        "Fecha Prevista Entrega": r.fecha_prevista_entrega,
+        "Responsable Actual": r.responsable_actual,
+        "Siguiente Acción": r.siguiente_accion,
+        "Fecha Límite Acción": r.fecha_limite_siguiente_accion,
+        "Incidencia": "Sí" if r.incidencia else "No",
+        "Prioridad": r.prioridad_calculada,
+        "Días Parado": r.dias_parado,
+        "Observaciones": r.observaciones,
+        "Archivado": "Sí" if r.archivado else "No",
+        "Última Actualización": r.fecha_ultima_actualizacion,
+    } for r in rows])
+    
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        df.to_excel(writer, index=False, sheet_name="Presupuestos")
+        
+        workbook = writer.book
+        worksheet = writer.sheets["Presupuestos"]
+        
+        # Formatos
+        header_format = workbook.add_format({"bold": True, "bg_color": "#4F46E5", "font_color": "white", "border": 1})
+        money_format = workbook.add_format({"num_format": "#,##0.00€"})
+        date_format = workbook.add_format({"num_format": "yyyy-mm-dd"})
+        
+        # Aplicar formatos
+        for idx, col in enumerate(df.columns):
+            worksheet.write(0, idx, col, header_format)
+        
+        for idx, row in enumerate(rows, start=1):
+            worksheet.write(idx, 8, row.importe, money_format)
+            if row.fecha_presupuesto:
+                worksheet.write(idx, 5, row.fecha_presupuesto, date_format)
+            if row.fecha_envio_cliente:
+                worksheet.write(idx, 6, row.fecha_envio_cliente, date_format)
+            if row.fecha_aceptacion:
+                worksheet.write(idx, 7, row.fecha_aceptacion, date_format)
+        
+        # Ajustar anchos de columna
+        worksheet.set_column(0, 0, 8)
+        worksheet.set_column(1, 1, 20)
+        worksheet.set_column(2, 3, 30)
+        worksheet.set_column(8, 8, 12)
+        worksheet.set_column(23, 23, 50)
+    
+    output.seek(0)
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename=presupuestos_{date.today().isoformat()}.xlsx"}
+    )
+
+
+# ==================== DASHBOARD EJECUTIVO ====================
+
+@app.get("/dashboard/ejecutivo")
+def dashboard_ejecutivo(db: Session = Depends(get_db)):
+    rows = base_query(db).all()
+    # OPTIMIZACIÓN: Obtener settings UNA vez
+    settings = get_settings(db)
+    
+    for row in rows:
+        row.prioridad_calculada, row.dias_parado = calculate_risk(row, db, settings)
+    
+    today = date.today()
+    current_month = today.replace(day=1)
+    
+    # KPIs principales
+    active = [r for r in rows if r.estado not in CLOSED_STATES]
+    accepted_no_order = [r for r in rows if r.fecha_aceptacion and not r.pedido_proveedor_realizado]
+    money_at_risk_val = sum(r.importe for r in accepted_no_order)
+    
+    # Tendencias últimos 6 meses
+    months_data = []
+    for i in range(6):
+        month_date = (today - timedelta(days=30*i)).replace(day=1)
+        month_rows = [r for r in rows if r.creado_en.date() >= month_date and r.creado_en.date() < (month_date + timedelta(days=32)).replace(day=1)]
+        months_data.append({
+            "mes": month_date.strftime("%Y-%m"),
+            "nuevos": len(month_rows),
+            "importe": round(sum(r.importe for r in month_rows), 2),
+        })
+    months_data.reverse()
+    
+    # Top 10 presupuestos por importe
+    top_importe = sorted([r for r in active], key=lambda x: x.importe, reverse=True)[:10]
+    
+    # Rendimiento por gestor
+    gestores = {}
+    for r in active:
+        g = r.gestor or "Sin asignar"
+        if g not in gestores:
+            gestores[g] = {"total": 0, "importe": 0, "criticos": 0, "incidencias": 0}
+        gestores[g]["total"] += 1
+        gestores[g]["importe"] += r.importe
+        if r.prioridad_calculada in {"Rojo", "Crítico"}:
+            gestores[g]["criticos"] += 1
+        if r.incidencia:
+            gestores[g]["incidencias"] += 1
+    
+    gestores_list = [{"gestor": k, **v} for k, v in gestores.items()]
+    gestores_list = sorted(gestores_list, key=lambda x: x["importe"], reverse=True)
+    
+    return {
+        "kpis": {
+            "presupuestos_activos": len(active),
+            "dinero_en_riesgo": round(money_at_risk_val, 2),
+            "criticos": len([r for r in rows if r.prioridad_calculada == "Crítico"]),
+            "incidencias_abiertas": len([r for r in rows if r.incidencia]),
+            "aceptados_sin_pedido": len(accepted_no_order),
+            "cerrados_mes": len([r for r in rows if r.estado == "Entregado / cerrado" and r.actualizado_en.date() >= current_month]),
+        },
+        "tendencias": months_data,
+        "top_presupuestos": [{
+            "id": r.id,
+            "numero": r.numero_presupuesto,
+            "cliente": r.cliente,
+            "importe": r.importe,
+            "estado": r.estado,
+            "prioridad": r.prioridad_calculada,
+        } for r in top_importe],
+        "rendimiento_gestores": [{
+            "gestor": g["gestor"],
+            "total": g["total"],
+            "importe_total": round(g["importe"], 2),
+            "criticos": g["criticos"],
+            "incidencias": g["incidencias"],
+        } for g in gestores_list[:10]],
+        "distribucion_estados": [
+            {"estado": estado, "total": len([r for r in rows if r.estado == estado])}
+            for estado in ESTADOS
+        ],
+    }

@@ -153,6 +153,120 @@ Antes de usar datos reales:
 - Configurar backups de PostgreSQL.
 - Revisar SMTP.
 
+## Producción interna en VPS
+
+Objetivo recomendado: un VPS único con Docker Compose, PostgreSQL 16 en contenedor y Nginx/HTTPS en el host. El backend queda interno en la red de Compose y el frontend solo publica `127.0.0.1:8088` para que Nginx sea el único punto de entrada.
+
+Preparación inicial:
+
+```bash
+cp .env.production.example .env
+nano .env
+docker compose build
+docker compose up -d
+docker compose ps
+```
+
+Comprueba que la app responde por el proxy local:
+
+```bash
+curl -I http://127.0.0.1:8088
+curl -I http://127.0.0.1:8088/api/health
+```
+
+Variables obligatorias en producción:
+
+- `POSTGRES_PASSWORD`
+- `DATABASE_URL`
+- `JWT_SECRET_KEY`
+- `CORS_ORIGINS`
+- `APP_PUBLIC_URL`
+
+Usa valores largos y únicos para `POSTGRES_PASSWORD` y `JWT_SECRET_KEY`. No subas `.env` al repositorio.
+
+### Nginx y HTTPS
+
+Ejemplo de bloque Nginx delante del frontend publicado en loopback:
+
+```nginx
+server {
+    listen 80;
+    server_name presucontrol.tuempresa.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name presucontrol.tuempresa.com;
+
+    client_max_body_size 10m;
+
+    location / {
+        proxy_pass http://127.0.0.1:8088;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 30s;
+        proxy_send_timeout 120s;
+        proxy_read_timeout 120s;
+    }
+}
+```
+
+Gestiona el certificado con Certbot, acme.sh o el mecanismo estándar del VPS.
+
+### Backups y restore
+
+Backup diario recomendado por cron:
+
+```bash
+mkdir -p /var/backups/presucontrol
+crontab -e
+```
+
+Entrada cron:
+
+```cron
+0 3 * * * cd /opt/presucontrol && BACKUP_DIR=/var/backups/presucontrol ./backup.sh >> /var/log/presucontrol_backup.log 2>&1
+```
+
+El script usa por defecto el contenedor `presucontrol-postgres`, conserva 30 días y falla si el fichero generado queda vacío.
+
+Restauración:
+
+```bash
+cd /opt/presucontrol
+docker compose up -d postgres
+./restore.sh /var/backups/presucontrol/presucontrol_YYYYmmdd_HHMMSS.sql.gz
+docker compose up -d
+```
+
+Antes de restaurar sobre producción real, para la app y confirma que el fichero pertenece al entorno correcto.
+
+### Actualización y rollback
+
+Actualización normal:
+
+```bash
+git pull
+docker compose build
+docker compose up -d
+docker compose logs -f --tail=100 backend frontend
+```
+
+Docker ejecuta `alembic upgrade head` al arrancar el backend. Si una actualización falla, vuelve al commit anterior y reconstruye:
+
+```bash
+git log --oneline -5
+git checkout <commit_anterior>
+docker compose build
+docker compose up -d
+```
+
+Si la migración ya modificó datos, restaura el último backup verificado antes de levantar de nuevo la aplicación.
+
 ## Endpoints nuevos relevantes
 
 ```text
@@ -164,4 +278,6 @@ POST /usuarios/{id}/toggle-gestion
 POST /usuarios/{id}/reset-password
 GET  /logs/emails/export
 GET  /logs/actividad/export
+GET  /reports/list?type=atrasados
+POST /reports/export-list
 ```
