@@ -177,6 +177,16 @@ class RegistrationAttempt(Base):
     window_start: Mapped[DateTime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class PasswordResetAttempt(Base):
+    """Rate limiting for password reset endpoint to prevent email enumeration."""
+    __tablename__ = "password_reset_attempts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ip: Mapped[str] = mapped_column(String(45), nullable=False, unique=True, index=True)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    window_start: Mapped[DateTime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+
+
 class InAppNotification(Base):
     __tablename__ = "in_app_notifications"
     __table_args__ = (UniqueConstraint("fingerprint", name="uq_inapp_notification_fingerprint"),)

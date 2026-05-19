@@ -21,7 +21,7 @@ from sqlalchemy import func, or_, desc, asc, text
 from sqlalchemy.orm import Session, selectinload
 
 from .database import Base, engine, get_db, SessionLocal
-from .models import Comentario, EmailNotificationLog, EvaluacionProveedor, HistorialCambio, LoginAttempt, PedidoProveedor, Presupuesto, PresupuestoProveedor, Proveedor, RegistrationAttempt, Usuario
+from .models import Comentario, EmailNotificationLog, EvaluacionProveedor, HistorialCambio, LoginAttempt, PasswordResetAttempt, PedidoProveedor, Presupuesto, PresupuestoProveedor, Proveedor, RegistrationAttempt, Usuario
 from .rules import CLOSED_STATES, apply_derived_fields, calculate_risk, get_pedido_counts, validate_presupuesto
 from .schemas import (
     ComentarioCreate,
@@ -65,11 +65,21 @@ from .emailer import parse_recipients, send_email
 from .notifications import build_alerts, money_at_risk, run_automatic_alert_checks, send_alert_digest, send_escalation_alerts, send_immediate_alerts_for_budget
 from .notifications_inapp import obtener_notificaciones, contar_sin_leer, marcar_leida, marcar_todas_leidas
 
-app = FastAPI(title="PresuControl API", version="1.3.0")
+# Configure logging for production
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO"),
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+# Set library log levels to reduce noise
+logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+logging.getLogger("sqlalchemy.engine").setLevel(os.getenv("SQLALCHEMY_LOG_LEVEL", "WARNING"))
+
+app = FastAPI(title="PresuControl API", version="1.3.1")
 
 origins = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost:3000").split(",")
 origins_stripped = [o.strip() for o in origins if o.strip()]
-if "*" in origins_stripped and True:  # credentials always enabled
+if "*" in origins_stripped:  # credentials always enabled
     raise RuntimeError("CORS_ORIGINS contains '*' which is not allowed when allow_credentials=True. Specify explicit origins.")
 app.add_middleware(
     CORSMiddleware,
@@ -176,39 +186,45 @@ def enforce_login_rate_limit(email: str, request: Request, db: Session):
     now = datetime.now(timezone.utc)
     ip = request.client.host if request.client else "unknown"
     window_start = now - timedelta(minutes=minutes)
+
+    # Cleanup old records
     db.query(LoginAttempt).filter(
         LoginAttempt.ip == ip,
         LoginAttempt.email == email,
         LoginAttempt.window_start < window_start,
     ).delete()
+
+    # Atomic upsert using INSERT ... ON CONFLICT for PostgreSQL
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+    stmt = pg_insert(LoginAttempt).values(ip=ip, email=email, attempts=1, window_start=now)
+    stmt = stmt.on_conflict_do_update(
+        index_elements=['ip', 'email'],
+        set_={'attempts': LoginAttempt.attempts + 1, 'window_start': now}
+    )
+    db.execute(stmt)
     db.commit()
 
+    # Check if rate limited after the upsert
     record = db.query(LoginAttempt).filter(
         LoginAttempt.ip == ip,
         LoginAttempt.email == email,
-    ).with_for_update().first()
-
+    ).first()
     if record and record.attempts >= max_attempts:
         raise HTTPException(status_code=429, detail=f"Demasiados intentos. Prueba de nuevo en {minutes} minutos.")
-
-    if record:
-        record.attempts += 1
-        record.window_start = now
-    else:
-        db.add(LoginAttempt(ip=ip, email=email, attempts=1, window_start=now))
-    db.commit()
 
 
 def register_failed_login(email: str, request: Request, db: Session):
     ip = request.client.host if request.client else "unknown"
     now = datetime.now(timezone.utc)
-    existing = db.query(LoginAttempt).filter(LoginAttempt.ip == ip, LoginAttempt.email == email).first()
-    if existing:
-        existing.attempts += 1
-        db.commit()
-    else:
-        db.add(LoginAttempt(ip=ip, email=email, attempts=1, window_start=now))
-        db.commit()
+
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+    stmt = pg_insert(LoginAttempt).values(ip=ip, email=email, attempts=1, window_start=now)
+    stmt = stmt.on_conflict_do_update(
+        index_elements=['ip', 'email'],
+        set_={'attempts': LoginAttempt.attempts + 1, 'window_start': now}
+    )
+    db.execute(stmt)
+    db.commit()
 
 
 def clear_failed_logins(email: str, request: Request, db: Session):
@@ -223,25 +239,51 @@ def enforce_registration_rate_limit(request: Request, db: Session):
     now = datetime.now(timezone.utc)
     ip = request.client.host if request.client else "unknown"
     window_start = now - timedelta(minutes=minutes)
+
     db.query(RegistrationAttempt).filter(
         RegistrationAttempt.ip == ip,
         RegistrationAttempt.window_start < window_start,
     ).delete()
+
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+    stmt = pg_insert(RegistrationAttempt).values(ip=ip, attempts=1, window_start=now)
+    stmt = stmt.on_conflict_do_update(
+        index_elements=['ip'],
+        set_={'attempts': RegistrationAttempt.attempts + 1, 'window_start': now}
+    )
+    db.execute(stmt)
     db.commit()
 
-    record = db.query(RegistrationAttempt).filter(
-        RegistrationAttempt.ip == ip,
-    ).with_for_update().first()
-
+    record = db.query(RegistrationAttempt).filter(RegistrationAttempt.ip == ip).first()
     if record and record.attempts >= max_attempts:
         raise HTTPException(status_code=429, detail=f"Demasiados intentos de registro. Prueba de nuevo en {minutes} minutos.")
 
-    if record:
-        record.attempts += 1
-        record.window_start = now
-    else:
-        db.add(RegistrationAttempt(ip=ip, attempts=1, window_start=now))
+
+def enforce_password_reset_rate_limit(request: Request, db: Session):
+    """Rate limit for password reset to prevent email enumeration attacks."""
+    max_attempts = int(os.getenv("PASSWORD_RESET_RATE_LIMIT_ATTEMPTS", "3"))
+    minutes = int(os.getenv("PASSWORD_RESET_RATE_LIMIT_WINDOW_MINUTES", "60"))
+    now = datetime.now(timezone.utc)
+    ip = request.client.host if request.client else "unknown"
+    window_start = now - timedelta(minutes=minutes)
+
+    db.query(PasswordResetAttempt).filter(
+        PasswordResetAttempt.ip == ip,
+        PasswordResetAttempt.window_start < window_start,
+    ).delete()
+
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+    stmt = pg_insert(PasswordResetAttempt).values(ip=ip, attempts=1, window_start=now)
+    stmt = stmt.on_conflict_do_update(
+        index_elements=['ip'],
+        set_={'attempts': PasswordResetAttempt.attempts + 1, 'window_start': now}
+    )
+    db.execute(stmt)
     db.commit()
+
+    record = db.query(PasswordResetAttempt).filter(PasswordResetAttempt.ip == ip).first()
+    if record and record.attempts >= max_attempts:
+        raise HTTPException(status_code=429, detail=f"Demasiados intentos de recuperación. Prueba de nuevo en {minutes} minutos.")
 
 
 def hash_reset_token(token: str) -> str:
@@ -301,7 +343,8 @@ def login(payload: UserLogin, request: Request, db: Session = Depends(get_db)):
 
 
 @app.post("/auth/password/request")
-def request_password_reset(payload: PasswordResetRequest, db: Session = Depends(get_db)):
+def request_password_reset(payload: PasswordResetRequest, request: Request, db: Session = Depends(get_db)):
+    enforce_password_reset_rate_limit(request, db)
     email = normalize_email(payload.email)
     user = db.query(Usuario).filter(Usuario.email == email, Usuario.activo == True, Usuario.aprobado == True).first()  # noqa: E712
     if not user:
