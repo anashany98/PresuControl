@@ -9,7 +9,7 @@ depends_on = None
 
 def upgrade():
     op.create_table('in_app_notifications',
-        sa.Column('id', sa.Integer(), nullable=False),
+        sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
         sa.Column('user_id', sa.Integer(), nullable=True),
         sa.Column('tipo', sa.String(length=80), nullable=False),
         sa.Column('titulo', sa.String(length=255), nullable=False),

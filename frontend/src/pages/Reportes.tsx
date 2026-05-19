@@ -6,6 +6,8 @@ import { StateBadge } from '../components/Badges'
 import { API_URL, api, euro, fmtDate, type Presupuesto } from '../utils/api'
 import { useAuth } from '../utils/auth'
 import { useData } from '../utils/useData'
+import { PedidoSummaryBadge } from '../components/PedidoSummary'
+import { useToast } from '../utils/toast'
 
 type ReportKey = 'atrasados' | 'cancelados' | 'sin_pedido' | 'sin_aceptacion' | 'en_riesgo' | 'pedidos_pendientes' | 'pedidos_completados'
 
@@ -39,6 +41,7 @@ async function downloadExcel(data: Presupuesto[], filename: string) {
 
 export function Reportes() {
   const { user } = useAuth()
+  const toast = useToast()
   const [activeTab, setActiveTab] = useState<ReportKey>('atrasados')
   const [gestor, setGestor] = useState('')
   const [dateFrom, setDateFrom] = useState('')
@@ -79,7 +82,7 @@ export function Reportes() {
 
   const handleExport = () => {
     const date = new Date().toISOString().slice(0, 10)
-    downloadExcel(filteredRows, `reporte_${activeTab}_${date}.xlsx`).catch(console.error)
+    downloadExcel(filteredRows, `reporte_${activeTab}_${date}.xlsx`).catch(() => toast.error('Error exportando'))
   }
 
   return (
@@ -165,12 +168,13 @@ export function Reportes() {
                 <th>Gestor</th>
                 <th>Estado</th>
                 <th>Importe</th>
+                <th>Pedidos</th>
                 <th>Fecha límite</th>
               </tr>
             </thead>
             <tbody>
               {filteredRows.length === 0 ? (
-                <tr><td colSpan={6} style={{ textAlign: 'center' }} className="muted">Sin resultados</td></tr>
+                <tr><td colSpan={7} style={{ textAlign: 'center' }} className="muted">Sin resultados</td></tr>
               ) : (
                 filteredRows.map(p => (
                   <tr key={p.id}>
@@ -179,6 +183,7 @@ export function Reportes() {
                     <td>{p.gestor}</td>
                     <td><StateBadge value={p.estado} /></td>
                     <td className="money">{euro(p.importe)}</td>
+                    <td><PedidoSummaryBadge presupuesto={p} variant="table" /></td>
                     <td>{fmtDate(p.fecha_limite_siguiente_accion)}</td>
                   </tr>
                 ))

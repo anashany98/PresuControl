@@ -14,11 +14,8 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem('presucontrol_token'))
-  const [user, setUser] = useState<User | null>(() => {
-    const raw = localStorage.getItem('presucontrol_user')
-    return raw ? JSON.parse(raw) : null
-  })
+  const [token, setToken] = useState<string | null>(() => sessionStorage.getItem('presucontrol_token'))
+  const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(Boolean(token))
 
   useEffect(() => {
@@ -29,11 +26,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const me = await api.get<User>('/auth/me')
         if (!alive) return
         setUser(me)
-        localStorage.setItem('presucontrol_user', JSON.stringify(me))
       } catch {
         if (!alive) return
-        localStorage.removeItem('presucontrol_token')
-        localStorage.removeItem('presucontrol_user')
+        sessionStorage.removeItem('presucontrol_token')
         setToken(null); setUser(null)
       } finally { if (alive) setLoading(false) }
     }
@@ -43,22 +38,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function login(email: string, password: string) {
     const res = await api.post<{ access_token: string; user: User }>('/auth/login', { email, password })
-    localStorage.setItem('presucontrol_token', res.access_token)
-    localStorage.setItem('presucontrol_user', JSON.stringify(res.user))
+    sessionStorage.setItem('presucontrol_token', res.access_token)
     setToken(res.access_token); setUser(res.user)
   }
 
   async function register(nombre: string, email: string, password: string) {
     const res = await api.post<{ access_token?: string; user?: User; detail?: string }>('/auth/register', { nombre, email, password })
     if (!res.access_token || !res.user) throw new Error(res.detail || 'Registro enviado. La cuenta queda pendiente de aceptación.')
-    localStorage.setItem('presucontrol_token', res.access_token)
-    localStorage.setItem('presucontrol_user', JSON.stringify(res.user))
+    sessionStorage.setItem('presucontrol_token', res.access_token)
     setToken(res.access_token); setUser(res.user)
   }
 
   function logout() {
-    localStorage.removeItem('presucontrol_token')
-    localStorage.removeItem('presucontrol_user')
+    sessionStorage.removeItem('presucontrol_token')
     setToken(null); setUser(null)
   }
 

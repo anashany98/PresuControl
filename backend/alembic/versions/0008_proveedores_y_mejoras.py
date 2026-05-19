@@ -20,7 +20,7 @@ def upgrade():
     # Tabla de proveedores
     op.create_table(
         'proveedores',
-        sa.Column('id', sa.Integer(), nullable=False),
+        sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
         sa.Column('nombre', sa.String(length=255), nullable=False),
         sa.Column('contacto', sa.String(length=255), nullable=True),
         sa.Column('email', sa.String(length=255), nullable=True),
@@ -41,7 +41,7 @@ def upgrade():
     # Tabla de evaluaciones de proveedores
     op.create_table(
         'evaluaciones_proveedor',
-        sa.Column('id', sa.Integer(), nullable=False),
+        sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
         sa.Column('proveedor_id', sa.Integer(), nullable=False),
         sa.Column('pedido_id', sa.Integer(), nullable=True),
         sa.Column('puntualidad', sa.Integer(), nullable=False),

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import hmac
 import io
 import json
 import os
@@ -64,9 +65,12 @@ from .notifications_inapp import obtener_notificaciones, contar_sin_leer, marcar
 app = FastAPI(title="PresuControl API", version="1.3.0")
 
 origins = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost:3000").split(",")
+origins_stripped = [o.strip() for o in origins if o.strip()]
+if "*" in origins_stripped and True:  # credentials always enabled
+    raise RuntimeError("CORS_ORIGINS contains '*' which is not allowed when allow_credentials=True. Specify explicit origins.")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[o.strip() for o in origins if o.strip()],
+    allow_origins=origins_stripped,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -322,6 +326,8 @@ def reset_password(payload: PasswordResetConfirm, db: Session = Depends(get_db))
     now = datetime.now(timezone.utc)
     if not user or not user.reset_password_expira_en or user.reset_password_expira_en < now:
         raise HTTPException(status_code=400, detail="Token inválido o caducado.")
+    if not hmac.compare_digest(user.reset_password_token_hash or "", token_hash):
+        raise HTTPException(status_code=400, detail="Token inválido o caducado.")
     user.hashed_password = hash_password(payload.password)
     user.reset_password_token_hash = None
     user.reset_password_expira_en = None
@@ -563,21 +569,19 @@ def health():
 # Debug endpoints - only available when DEBUG_MODE=true
 DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() in {"1", "true", "yes", "on"}
 
-@app.get("/debug/ping")
-def debug_ping():
-    if not DEBUG_MODE:
-        raise HTTPException(status_code=404, detail="Not found")
-    return {"status": "ok", "message": "Backend is responding"}
+if DEBUG_MODE:
 
-@app.get("/debug/verify-login")
-def debug_verify_login(request: Request, db: Session = Depends(get_db)):
-    if not DEBUG_MODE:
-        raise HTTPException(status_code=404, detail="Not found")
-    try:
-        user = get_authenticated_user_from_request(request, db)
-        return {"ok": True, "user": user.email if user else None}
-    except HTTPException as e:
-        return {"ok": False, "error": e.detail}
+    @app.get("/debug/ping")
+    def debug_ping():
+        return {"status": "ok", "message": "Backend is responding"}
+
+    @app.get("/debug/verify-login")
+    def debug_verify_login(request: Request, db: Session = Depends(get_db)):
+        try:
+            user = get_authenticated_user_from_request(request, db)
+            return {"ok": True, "user": user.email if user else None}
+        except HTTPException as e:
+            return {"ok": False, "error": e.detail}
 
 
 # Seed demo endpoint - only available when SEED_DEMO=true
@@ -1769,6 +1773,14 @@ def export_presupuestos(
 
 MAX_IMPORT_FILE_SIZE = 10 * 1024 * 1024
 ALLOWED_IMPORT_EXTENSIONS = {".csv", ".xlsx", ".xls"}
+ALLOWED_IMPORT_MIME_TYPES = {
+    "text/csv",
+    "application/csv",
+    "text/plain",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/octet-stream",
+}
 
 
 def parse_upload(file: UploadFile) -> pd.DataFrame:
@@ -1776,6 +1788,9 @@ def parse_upload(file: UploadFile) -> pd.DataFrame:
     _, ext = os.path.splitext(filename.lower())
     if ext not in ALLOWED_IMPORT_EXTENSIONS:
         raise HTTPException(status_code=400, detail="Formato no soportado. Usa CSV, XLSX o XLS.")
+    content_type = getattr(file, "content_type", None) or ""
+    if content_type and content_type not in ALLOWED_IMPORT_MIME_TYPES:
+        raise HTTPException(status_code=400, detail="Tipo de archivo no válido. Solo se permiten archivos CSV o Excel (.csv, .xlsx, .xls).")
     raw = file.file.read()
     if len(raw) > MAX_IMPORT_FILE_SIZE:
         raise HTTPException(status_code=400, detail="Archivo demasiado grande. Máximo 10MB.")

@@ -18,7 +18,7 @@ depends_on = None
 def upgrade():
     op.create_table(
         'presupuestos_proveedores',
-        sa.Column('id', sa.Integer(), nullable=False),
+        sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
         sa.Column('presupuesto_id', sa.Integer(), nullable=False),
         sa.Column('proveedor_id', sa.Integer(), nullable=False),
         sa.Column('estado', sa.String(length=40), nullable=False, server_default='contactado'),

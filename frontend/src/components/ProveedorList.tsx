@@ -14,6 +14,7 @@ export function ProveedorList({ presupuestoId, presupuestoImporte }: { presupues
   const [items, setItems] = useState<PresupuestoProveedor[]>([])
   const [loading, setLoading] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
+  const [adding, setAdding] = useState(false)
   const [allProveedores, setAllProveedores] = useState<Proveedor[]>([])
   const [selectedProveedor, setSelectedProveedor] = useState<number | ''>('')
   const [newEstado, setNewEstado] = useState('contactado')
@@ -38,18 +39,20 @@ export function ProveedorList({ presupuestoId, presupuestoImporte }: { presupues
 
   useEffect(() => {
     if (showAdd) {
-      api.getProveedores().then(setAllProveedores).catch(() => {})
+      api.getProveedores().then(setAllProveedores).catch(e => toast.error('Error cargando proveedores'))
     }
   }, [showAdd])
 
   async function addProveedor() {
     if (!selectedProveedor) return
+    setAdding(true)
     try {
       await api.addProveedorPresupuesto(presupuestoId, { proveedor_id: Number(selectedProveedor), estado: newEstado })
       setShowAdd(false)
       toast.success('Proveedor añadido')
       load()
     } catch (e) { toast.error(e instanceof Error ? e.message : String(e)) }
+    finally { setAdding(false) }
   }
 
   async function updateItem(proveedorId: number, data: Record<string, string | number | undefined>) {
@@ -185,7 +188,7 @@ export function ProveedorList({ presupuestoId, presupuestoImporte }: { presupues
             </div>
             <div className="modal-actions">
               <button className="btn secondary" onClick={() => setShowAdd(false)}>Cancelar</button>
-              <button className="btn" disabled={!selectedProveedor} onClick={addProveedor}>Añadir</button>
+              <button className="btn" disabled={!selectedProveedor || adding} onClick={addProveedor}>{adding ? 'Añadiendo...' : 'Añadir'}</button>
             </div>
           </div>
         </div>

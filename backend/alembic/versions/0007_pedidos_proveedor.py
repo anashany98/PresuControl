@@ -11,7 +11,7 @@ ESTADO_ENTREGA_ENUM = ('pendiente', 'parcial', 'completado')
 
 def upgrade():
     op.create_table('pedidos_proveedor',
-        sa.Column('id', sa.Integer(), nullable=False),
+        sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
         sa.Column('presupuesto_id', sa.Integer(), nullable=False),
         sa.Column('proveedor', sa.String(length=255), nullable=False),
         sa.Column('numero_pedido', sa.String(length=120), nullable=True),

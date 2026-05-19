@@ -3,6 +3,8 @@ services:
     image: postgres:16-alpine
     container_name: presucontrol-postgres
     restart: unless-stopped
+    networks:
+      - backend-network
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-presucontrol}
       POSTGRES_USER: ${POSTGRES_USER:-presucontrol}
@@ -15,11 +17,19 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: '0.5'
 
   backend:
     build: ./backend
     container_name: presucontrol-backend
     restart: unless-stopped
+    networks:
+      - backend-network
+      - external-network
     environment:
       DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env}
       CORS_ORIGINS: ${CORS_ORIGINS:?Set CORS_ORIGINS in .env}
@@ -46,6 +56,11 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          cpus: '1.0'
 
   frontend:
     build:
@@ -54,10 +69,23 @@ services:
         VITE_API_URL: /api
     container_name: presucontrol-frontend
     restart: unless-stopped
+    networks:
+      - external-network
     depends_on:
       - backend
     ports:
       - "127.0.0.1:8088:80"
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+          cpus: '0.5'
+
+networks:
+  backend-network:
+    driver: bridge
+  external-network:
+    driver: bridge
 
 volumes:
   presucontrol_pgdata:

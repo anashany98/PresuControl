@@ -3,6 +3,7 @@ import { Download, RefreshCw, Filter, Calendar, User, X, Mail, ClipboardList } f
 import { PageHeader } from '../components/PageHeader'
 import { API_URL, api, fmtDate, type ActivityLog, type EmailLog } from '../utils/api'
 import { useData } from '../utils/useData'
+import { useAuth } from '../utils/auth'
 
 type Tab = 'actividad' | 'emails'
 
@@ -25,6 +26,7 @@ const BADGE_COLORS: Record<string, string> = {
 }
 
 export function Logs() {
+  const { token } = useAuth()
   const [tab, setTab] = useState<Tab>('actividad')
   const [filters, setFilters] = useState({ tipo: '', usuario: '', presupuesto_id: '', date_from: '', date_to: '' })
   const [pageSize, setPageSize] = useState<PageSize>(25)
@@ -55,8 +57,23 @@ export function Logs() {
 
   const set = (k: keyof typeof filters, v: string) => { setFilters(f => ({ ...f, [k]: v })); setPage(1) }
   const clearFilters = () => { setFilters({ tipo: '', usuario: '', presupuesto_id: '', date_from: '', date_to: '' }); setPage(1) }
-  const token = localStorage.getItem('presucontrol_token')
-  const exportLink = (path: string) => `${API_URL}${path}${token ? `?access_token=${encodeURIComponent(token)}` : ''}`
+
+  async function handleExport(path: string, filename: string) {
+    if (!token) return
+    try {
+      const res = await fetch(`${API_URL}${path}`, { headers: { Authorization: `Bearer ${token}` } })
+      if (!res.ok) throw new Error('Export failed')
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      console.error('Export failed:', e)
+    }
+  }
 
   const paginatedEmails = useMemo(() => {
     if (!emails.data) return { items: [], total: 0 }
@@ -98,9 +115,9 @@ export function Logs() {
       </div>
       <div className="toolbar" style={{ marginTop: 10 }}>
         {tab === 'emails' ? (
-          <a className="btn secondary" href={exportLink('/logs/emails/export')}><Download size={16}/>Exportar Excel</a>
+          <button className="btn secondary" onClick={() => handleExport('/logs/emails/export', `logs_emails_${new Date().toISOString().slice(0, 10)}.xlsx`)}><Download size={16}/>Exportar Excel</button>
         ) : (
-          <a className="btn secondary" href={exportLink('/logs/actividad/export')}><Download size={16}/>Exportar Excel</a>
+          <button className="btn secondary" onClick={() => handleExport('/logs/actividad/export', `logs_actividad_${new Date().toISOString().slice(0, 10)}.xlsx`)}><Download size={16}/>Exportar Excel</button>
         )}
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
           <span className="muted">Mostrar</span>

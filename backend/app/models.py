@@ -73,6 +73,8 @@ class PedidoProveedor(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     presupuesto_id: Mapped[int] = mapped_column(ForeignKey("presupuestos.id", ondelete="CASCADE"), index=True)
+    # TODO: Normalize `proveedor` field - should be ForeignKey to proveedores.id, not free-text String.
+    # Requires data migration to map existing string values to proveedor IDs.
     proveedor: Mapped[str] = mapped_column(String(255), nullable=False)
     numero_pedido: Mapped[str | None] = mapped_column(String(120), nullable=True)
     fecha_pedido: Mapped[Date | None] = mapped_column(Date, nullable=True)
@@ -218,6 +220,9 @@ class EvaluacionProveedor(Base):
     __tablename__ = "evaluaciones_proveedor"
     __table_args__ = (
         Index("ix_evaluaciones_pedido_id", "pedido_id"),
+        CheckConstraint("puntualidad >= 1 AND puntualidad <= 5", name="ck_evaluacion_puntualidad_range"),
+        CheckConstraint("calidad >= 1 AND calidad <= 5", name="ck_evaluacion_calidad_range"),
+        CheckConstraint("comunicacion >= 1 AND comunicacion <= 5", name="ck_evaluacion_comunicacion_range"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
