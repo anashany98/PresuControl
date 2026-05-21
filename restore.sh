@@ -16,4 +16,11 @@ fi
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Restoring $BACKUP_FILE into $DB_NAME..."
 gunzip -c "$BACKUP_FILE" | docker exec -i "$CONTAINER_NAME" psql -U "$DB_USER" -d "$DB_NAME"
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] Restore completed."
+
+# Verify restore was successful
+if [ $? -eq 0 ]; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Restore completed successfully."
+else
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: Restore failed!"
+    exit 1
+fi
