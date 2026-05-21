@@ -1,4 +1,7 @@
 import json
+from contextvars import ContextVar
+from datetime import datetime, timedelta
+from typing import Optional
 from sqlalchemy.orm import Session
 from .models import AppSetting
 from .schemas import ESTADOS
@@ -27,7 +30,11 @@ DEFAULT_SETTINGS = {
     "dias_sin_actualizar_aviso": 3,
 }
 
-def get_settings(db: Session) -> dict:
+# Per-request cache using contextvars (async-safe)
+_settings_cache: ContextVar[Optional[tuple[dict, datetime]]] = ContextVar("_settings_cache", default=None)
+
+def _load_settings_from_db(db: Session) -> dict:
+    """Load settings from database, merging with defaults."""
     data = DEFAULT_SETTINGS.copy()
     rows = db.query(AppSetting).all()
     for row in rows:
@@ -36,6 +43,42 @@ def get_settings(db: Session) -> dict:
         except json.JSONDecodeError:
             data[row.key] = row.value
     return data
+
+class SettingsCache:
+    TTL_SECONDS: int = 60
+
+    @classmethod
+    def get(cls, db: Session | None = None) -> dict:
+        """Get settings from per-request cache or load from DB."""
+        now = datetime.now()
+        cached = _settings_cache.get()
+        if cached is not None:
+            data, expires_at = cached
+            if now < expires_at:
+                return data.copy()
+
+        owns_session = db is None
+        if db is None:
+            from .database import SessionLocal
+            db = SessionLocal()
+        try:
+            data = _load_settings_from_db(db)
+            expires_at = now + timedelta(seconds=cls.TTL_SECONDS)
+            _settings_cache.set((data, expires_at))
+        finally:
+            if owns_session:
+                db.close()
+
+        return data.copy()
+
+    @classmethod
+    def invalidate(cls):
+        """Invalidate cache to force refresh on next call."""
+        _settings_cache.set(None)
+
+def get_settings(db: Session) -> dict:
+    """Get settings - uses cache for performance."""
+    return SettingsCache.get(db)
 
 def validate_settings_value(key: str, value) -> None:
     """Raise ValueError if setting is out of valid range."""
@@ -69,4 +112,5 @@ def update_settings(db: Session, payload: dict) -> dict:
         else:
             row.value = raw
     db.commit()
-    return get_settings(db)
+    SettingsCache.invalidate()
+    return SettingsCache.get()

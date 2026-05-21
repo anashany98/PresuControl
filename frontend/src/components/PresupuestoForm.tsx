@@ -25,7 +25,7 @@ function Field({ label, children, error, required }: { label: string; children: 
         {required && <span className="required-mark"> *</span>}
       </label>
       {children}
-      {error && <span className="field-error-msg"><AlertCircle size={12} /> {error}</span>}
+      {error && <span className="field-error-msg" role="alert"><AlertCircle size={12} /> {error}</span>}
     </div>
   )
 }
@@ -36,7 +36,14 @@ export function PresupuestoForm({ value, onChange, onSubmit, submitLabel = 'Guar
   onSubmit: () => void
   submitLabel?: string
 }) {
-  const { errors, validateField } = useFormValidation(RULES)
+  const { errors, validateField, validateAll } = useFormValidation(RULES)
+
+  const handleSubmit = () => {
+    const isValid = validateAll(value)
+    if (isValid) {
+      onSubmit()
+    }
+  }
 
   const set = (key: keyof FormValue, raw: string | boolean | number | null) => {
     onChange({ [key]: raw } as Partial<FormValue>)
@@ -100,7 +107,7 @@ export function PresupuestoForm({ value, onChange, onSubmit, submitLabel = 'Guar
       </section>
 
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <button className="btn" onClick={onSubmit}><Save size={17} />{submitLabel}</button>
+        <button className="btn" onClick={handleSubmit}><Save size={17} />{submitLabel}</button>
       </div>
     </div>
   )

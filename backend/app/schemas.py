@@ -13,6 +13,7 @@ ESTADOS = [
     "Cancelado / rechazado",
     "Bloqueado / incidencia",
 ]
+ESTADO_ENTREGA_OPTIONS = ["pendiente", "parcial", "completado"]
 PRIORIDADES = ["Verde", "Amarillo", "Naranja", "Rojo", "Crítico"]
 
 class PresupuestoBase(BaseModel):
@@ -78,6 +79,135 @@ class PresupuestoOut(PresupuestoBase):
     archivado_en: datetime | None = None
     archivado_por: str | None = None
     motivo_archivado: str | None = None
+    pedidos: list["PedidoProveedorOut"] = []
+    proveedores_asociados: list["PresupuestoProveedorOut"] = []
+
+
+class PedidoProveedorBase(BaseModel):
+    proveedor: str | None = None
+    numero_pedido: str | None = None
+    fecha_pedido: date | None = None
+    importe: float | None = None
+    estado_entrega: str | None = None
+    fecha_entrega_prevista: date | None = None
+    fecha_entrega_real: date | None = None
+    observaciones: str | None = None
+
+
+class PedidoProveedorCreate(PedidoProveedorBase):
+    presupuesto_id: int | None = None
+    proveedor: str = Field(..., min_length=1)
+
+
+class PedidoProveedorUpdate(BaseModel):
+    proveedor: str | None = None
+    numero_pedido: str | None = None
+    fecha_pedido: date | None = None
+    importe: float | None = None
+    estado_entrega: str | None = None
+    fecha_entrega_prevista: date | None = None
+    fecha_entrega_real: date | None = None
+    observaciones: str | None = None
+
+
+class PedidoProveedorOut(PedidoProveedorBase):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    presupuesto_id: int
+    proveedor: str
+    estado_entrega: str
+    creado_en: datetime
+    actualizado_en: datetime
+
+class ProveedorBase(BaseModel):
+    nombre: str | None = None
+    contacto: str | None = None
+    email: str | None = None
+    telefono: str | None = None
+    direccion: str | None = None
+    notas: str | None = None
+
+
+class ProveedorCreate(ProveedorBase):
+    nombre: str = Field(..., min_length=1)
+
+
+class ProveedorUpdate(ProveedorBase):
+    pass
+
+
+class ProveedorOut(ProveedorBase):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    nombre: str
+    evaluacion_promedio: float | None = None
+    total_evaluaciones: int = 0
+    activo: bool = True
+    creado_en: datetime
+    actualizado_en: datetime
+
+
+PROVEEDOR_ESTADO_OPCIONES = ["contactado", "cotizacion_recibida", "descartado"]
+
+class PresupuestoProveedorBase(BaseModel):
+    proveedor_id: int | None = None
+    estado: str | None = None
+    importe_cotizado: float | None = None
+    fecha_cotizacion: date | None = None
+    notas: str | None = None
+
+
+class PresupuestoProveedorCreate(BaseModel):
+    proveedor_id: int = Field(..., min_length=1)
+    estado: str | None = "contactado"
+    importe_cotizado: float | None = None
+    fecha_cotizacion: date | None = None
+    notas: str | None = None
+
+
+class PresupuestoProveedorUpdate(BaseModel):
+    estado: str | None = None
+    importe_cotizado: float | None = None
+    fecha_cotizacion: date | None = None
+    notas: str | None = None
+
+
+class PresupuestoProveedorOut(PresupuestoProveedorBase):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    presupuesto_id: int
+    proveedor_id: int
+    estado: str
+    creado_en: datetime
+    actualizado_en: datetime
+    proveedor: "ProveedorOut"
+
+
+class ProveedorConPresupuestos(ProveedorOut):
+    presupuestos_asociados: list[PresupuestoProveedorOut] = []
+
+
+class EvaluacionProveedorBase(BaseModel):
+    puntualidad: int = Field(..., ge=1, le=5)
+    calidad: int = Field(..., ge=1, le=5)
+    comunicacion: int = Field(..., ge=1, le=5)
+    comentario: str | None = None
+
+
+class EvaluacionProveedorCreate(EvaluacionProveedorBase):
+    proveedor_id: int
+    pedido_id: int | None = None
+    evaluado_por: str | None = None
+
+
+class EvaluacionProveedorOut(EvaluacionProveedorBase):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    proveedor_id: int
+    pedido_id: int | None = None
+    evaluado_por: str | None = None
+    creado_en: datetime
+
 
 class ComentarioCreate(BaseModel):
     comentario: str = Field(..., min_length=1)
@@ -130,6 +260,13 @@ class SettingsOut(BaseModel):
     horas_escalado_nivel_2: int
     horas_escalado_nivel_3: int
     dias_sin_actualizar_aviso: int
+    timezone: str
+    public_url: str
+    smtp_configured: bool
+    smtp_host: str | None = None
+    smtp_port: int
+    smtp_from: str | None = None
+    smtp_tls: bool
 
 class SettingsUpdate(BaseModel):
     estados: list[str] | None = None

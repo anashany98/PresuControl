@@ -1,0 +1,126 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  # ============== BACKEND ==============
+  backend-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install ruff
+      - run: ruff check backend/app backend/tests
+
+  backend-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r backend/requirements.txt
+      - run: pip install pytest pytest-cov
+      - run: pytest backend/tests/ -v --tb=short
+        env:
+          JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
+          DATABASE_URL: sqlite:///./test_ci.db
+          AUTH_ENABLED: 'true'
+          APP_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
+
+  backend-migrations:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: presucontrol
+          POSTGRES_USER: presucontrol
+          POSTGRES_PASSWORD: presucontrol_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U presucontrol -d presucontrol"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r backend/requirements.txt
+      - run: python -m alembic upgrade head
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://presucontrol:${{ secrets.POSTGRES_PASSWORD }}@localhost:5432/presucontrol
+          JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
+
+  backend-dependency-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pip-audit
+      - run: pip-audit -r backend/requirements.txt
+
+  # ============== FRONTEND ==============
+  frontend-typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install -g npm@11.14.1
+      - run: npm ci
+        working-directory: frontend
+      - run: npx tsc --noEmit
+        working-directory: frontend
+
+  frontend-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install -g npm@11.14.1
+      - run: npm ci
+        working-directory: frontend
+      - run: npm run build
+        working-directory: frontend
+
+  frontend-dependency-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install -g npm@11.14.1
+      - run: npm ci
+        working-directory: frontend
+      - run: npm audit --omit=dev --audit-level=moderate
+        working-directory: frontend
+
+  # ============== DOCKER ==============
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose build
+        env:
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          DATABASE_URL: postgresql://presucontrol:${{ secrets.POSTGRES_PASSWORD }}@postgres:5432/presucontrol
+          CORS_ORIGINS: http://localhost:8088
+          JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
+          APP_PUBLIC_URL: http://localhost:8088

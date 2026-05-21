@@ -54,15 +54,18 @@ def decode_token(token: str) -> dict[str, Any]:
         raise HTTPException(status_code=401, detail="Sesión no válida o caducada.")
 
 
+def is_auth_enabled() -> bool:
+    return AUTH_ENABLED
+
+
 def get_authenticated_user_from_request(request: Request, db: Session) -> Usuario | None:
-    if not AUTH_ENABLED:
+    if not is_auth_enabled():
         return None
     auth = request.headers.get("Authorization", "")
     raw_token = None
     if auth.startswith("Bearer "):
         raw_token = auth.removeprefix("Bearer ").strip()
-    elif request.query_params.get("access_token"):
-        raw_token = request.query_params.get("access_token")
+    # Token in URL query param is disabled for security (logged, cached, leaked via Referer)
     if not raw_token:
         raise HTTPException(status_code=401, detail="No autenticado: falta token de acceso.")
     try:

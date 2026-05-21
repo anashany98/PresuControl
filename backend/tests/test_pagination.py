@@ -1,11 +1,21 @@
 import pytest
+import os
+os.environ["JWT_SECRET_KEY"] = "test-secret-key-not-for-production"
+os.environ["AUTH_ENABLED"] = "false"  # Start with auth disabled; tests that need auth use monkeypatch
+
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 from app.database import Base, get_db
 from app.main import app
 
-test_engine = create_engine("sqlite:///:memory:", echo=False)
+test_engine = create_engine(
+    "sqlite://",
+    echo=False,
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
+)
 TestingSessionLocal = sessionmaker(bind=test_engine)
 
 
@@ -25,6 +35,10 @@ client = TestClient(app)
 
 @pytest.fixture(autouse=True)
 def setup_db():
+    from app import models
+
+    assert models.Presupuesto
+    app.dependency_overrides[get_db] = override_get_db
     Base.metadata.create_all(bind=test_engine)
     yield
     Base.metadata.drop_all(bind=test_engine)

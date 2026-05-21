@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from .emailer import alert_email_body, parse_recipients, send_email
 from .models import EmailNotificationLog, Presupuesto
-from .rules import CLOSED_STATES, calculate_risk, days_between
+from .rules import CLOSED_STATES, calculate_risk, get_pedido_counts
 from .settings import get_settings
 
 
@@ -43,9 +43,10 @@ def build_alerts(db: Session) -> list[dict]:
     today = date.today()
     settings = get_settings(db)
     stale_days = int(settings.get("dias_sin_actualizar_aviso", 3) or 3)
+    pedido_counts = get_pedido_counts(db, [r.id for r in rows])
 
     for r in rows:
-        r.prioridad_calculada, r.dias_parado = calculate_risk(r, db, settings)
+        r.prioridad_calculada, r.dias_parado = calculate_risk(r, db, settings, pedido_counts)
         p = serialize_alert_presupuesto(r)
         if r.fecha_aceptacion and not r.pedido_proveedor_realizado:
             output.append({"tipo": "Presupuesto aceptado sin pedido proveedor", "presupuesto": p})
@@ -59,7 +60,6 @@ def build_alerts(db: Session) -> list[dict]:
             output.append({"tipo": "Presupuesto enviado sin respuesta", "presupuesto": p})
         if r.estado not in CLOSED_STATES and r.dias_parado >= stale_days:
             output.append({"tipo": "Presupuesto sin actualizar", "presupuesto": p})
-    db.commit()
     return output
 
 
@@ -180,6 +180,7 @@ def money_at_risk(db: Session) -> dict:
     rows = db.query(Presupuesto).filter(Presupuesto.archivado == False).all()  # noqa: E712
     today = date.today()
     stale_days = int(settings.get("dias_sin_actualizar_aviso", 3) or 3)
+    pedido_counts = get_pedido_counts(db, [r.id for r in rows])
 
     buckets = {
         "aceptados_sin_pedido": {"label": "Aceptados sin pedido proveedor", "count": 0, "importe": 0.0, "items": []},
@@ -191,14 +192,13 @@ def money_at_risk(db: Session) -> dict:
     unique: dict[int, Presupuesto] = {}
 
     def add(bucket: str, row: Presupuesto):
-        row.prioridad_calculada, row.dias_parado = calculate_risk(row, db, settings)
         buckets[bucket]["count"] += 1
         buckets[bucket]["importe"] += float(row.importe or 0)
         buckets[bucket]["items"].append(serialize_alert_presupuesto(row))
         unique[row.id] = row
 
     for r in rows:
-        r.prioridad_calculada, r.dias_parado = calculate_risk(r, db, settings)
+        r.prioridad_calculada, r.dias_parado = calculate_risk(r, db, settings, pedido_counts)
         if r.estado in CLOSED_STATES:
             continue
         if r.fecha_aceptacion and not r.pedido_proveedor_realizado:

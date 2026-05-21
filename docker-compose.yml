@@ -3,27 +3,38 @@ services:
     image: postgres:16-alpine
     container_name: presucontrol-postgres
     restart: unless-stopped
+    networks:
+      - backend-network
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-presucontrol}
       POSTGRES_USER: ${POSTGRES_USER:-presucontrol}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-presucontrol}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
     volumes:
       - presucontrol_pgdata:/var/lib/postgresql/data
+      - presucontrol_backups:/backups
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-presucontrol} -d ${POSTGRES_DB:-presucontrol}"]
       interval: 10s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: '0.5'
 
   backend:
     build: ./backend
     container_name: presucontrol-backend
     restart: unless-stopped
+    networks:
+      - backend-network
+      - external-network
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql://presucontrol:presucontrol@postgres:5432/presucontrol}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8088,http://localhost:5173,http://192.168.1.187:8088}
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env}
+      CORS_ORIGINS: ${CORS_ORIGINS:?Set CORS_ORIGINS in .env}
       AUTH_ENABLED: ${AUTH_ENABLED:-true}
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-cambia_esta_clave_larga_y_aleatoria}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in .env}
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-720}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
@@ -33,20 +44,23 @@ services:
       SMTP_TLS: ${SMTP_TLS:-true}
       SCHEDULER_ENABLED: ${SCHEDULER_ENABLED:-true}
       APP_TIMEZONE: ${APP_TIMEZONE:-Europe/Madrid}
-      APP_PUBLIC_URL: ${APP_PUBLIC_URL:-http://localhost:8088}
+      APP_PUBLIC_URL: ${APP_PUBLIC_URL:?Set APP_PUBLIC_URL in .env}
       RUN_CREATE_ALL: "false"
       RUN_DEFENSIVE_MIGRATIONS: "false"
     depends_on:
       postgres:
         condition: service_healthy
-    expose:
-      - "8000"
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          cpus: '1.0'
 
   frontend:
     build:
@@ -55,10 +69,24 @@ services:
         VITE_API_URL: /api
     container_name: presucontrol-frontend
     restart: unless-stopped
+    networks:
+      - external-network
     depends_on:
       - backend
     ports:
-      - "0.0.0.0:8088:80"
+      - "127.0.0.1:8088:80"
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+          cpus: '0.5'
+
+networks:
+  backend-network:
+    driver: bridge
+  external-network:
+    driver: bridge
 
 volumes:
   presucontrol_pgdata:
+  presucontrol_backups:

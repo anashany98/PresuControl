@@ -5,6 +5,7 @@ import { StatCard } from '../components/StatCard'
 import { AlertTriangle, Clock3, Euro, TrendingUp } from 'lucide-react'
 import { api, euro } from '../utils/api'
 import { useData } from '../utils/useData'
+import { useToast } from '../utils/toast'
 
 type Report = {
   presupuestos_por_estado: { name: string; value: number }[]
@@ -18,10 +19,13 @@ type Report = {
   tiempo_medio_fase?: number
 }
 
-async function downloadExcel() {
+async function downloadExcel(toastFn: (msg: string) => void) {
   try {
     const token = localStorage.getItem('presucontrol_token')
-    const res = await fetch('/api/reports/export', { headers: { Authorization: `Bearer ${token}` } })
+    const res = await fetch('/api/reports/export', {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    if (!res.ok) throw new Error('Download failed')
     const blob = await res.blob()
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -29,19 +33,21 @@ async function downloadExcel() {
     a.download = `presucontrol_informe_${new Date().toISOString().slice(0, 10)}.xlsx`
     a.click()
     URL.revokeObjectURL(url)
+    toastFn('Descarga iniciada')
   } catch (e) {
-    console.error('Export failed:', e)
+    toastFn('Error exportando')
   }
 }
 
 export function Informes() {
+  const toast = useToast()
   const { data, loading, error } = useData<Report>(() => api.get('/reports'), [])
   if (loading) return <div className="card">Cargando informes...</div>
   if (error || !data) return <div className="error">{error || 'Error'}</div>
   const conversionRate = data.tasa_conversion ?? 0
   const avgTime = data.tiempo_medio_fase ?? 0
   return <>
-    <PageHeader title="Informes" subtitle="Métricas de seguimiento para dirección y administración." actions={<button className="btn secondary" onClick={downloadExcel}><Download size={16}/>Exportar Excel</button>} />
+    <PageHeader title="Informes" subtitle="Métricas de seguimiento para dirección y administración." actions={<button className="btn secondary" onClick={() => downloadExcel(toast.error)}><Download size={16}/>Exportar Excel</button>} />
     <div className="grid cards">
       <StatCard label="Importe aceptado pendiente pedido" value={euro(data.metricas.importe_aceptado_pendiente_pedido)} icon={Euro} />
       <StatCard label="Días medios aceptación → pedido" value={data.metricas.dias_medios_aceptacion_a_pedido} icon={Clock3} />

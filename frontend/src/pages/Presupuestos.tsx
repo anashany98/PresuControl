@@ -6,6 +6,7 @@ import { PriorityBadge, StateBadge } from '../components/Badges'
 import { SkeletonTable } from '../components/Skeleton'
 import { ESTADOS, api, euro, exportUrl, fmtDate, type PaginatedPresupuestos, type Presupuesto } from '../utils/api'
 import { useData } from '../utils/useData'
+import { PedidoSummaryBadge } from '../components/PedidoSummary'
 
 const PRIORIDADES = ['Verde','Amarillo','Naranja','Rojo','Crítico']
 const defaultColumns = ['numero','cliente','obra','gestor','estado','importe','fechas','proveedor','pedido','responsable','accion','dias','prioridad','incidencia','ultima']
@@ -80,7 +81,7 @@ export function PresupuestosTable({ rows, has, compact = false }: { rows: Presup
       {show('importe') && <td className="money">{euro(p.importe)}</td>}
       {show('fechas') && <td><small>Presu: {fmtDate(p.fecha_presupuesto)}<br/>Envío: {fmtDate(p.fecha_envio_cliente)}<br/>Acept.: {fmtDate(p.fecha_aceptacion)}</small></td>}
       {show('proveedor') && <td>{p.proveedor || '—'}</td>}
-      {show('pedido') && <td><small>{p.pedido_proveedor_realizado ? 'Sí' : 'No'}<br/>{p.numero_pedido_proveedor || '—'}<br/>{fmtDate(p.fecha_pedido_proveedor)} · Plazo {fmtDate(p.plazo_proveedor)}</small></td>}
+      {show('pedido') && <td><PedidoSummaryBadge presupuesto={p} variant="table" /></td>}
       {show('responsable') && <td>{p.responsable_actual || '—'}</td>}
       {show('accion') && <td><strong>{p.siguiente_accion || '—'}</strong><br/><small>Vence: {fmtDate(p.fecha_limite_siguiente_accion)}</small></td>}
       {show('dias') && <td>{p.dias_parado}</td>}

@@ -2,17 +2,39 @@ import { CheckCircle2, KeyRound, RefreshCw, ShieldCheck, ShieldOff, UserX } from
 import { PageHeader } from '../components/PageHeader'
 import { api, fmtDate, type UserAdmin } from '../utils/api'
 import { useData } from '../utils/useData'
+import { useToast } from '../utils/toast'
 
 export function Usuarios() {
+  const toast = useToast()
   const { data, loading, error, reload } = useData<UserAdmin[]>(() => api.get('/usuarios'), [])
-  async function accept(id: number) { await api.post(`/usuarios/${id}/aceptar`, {}); reload() }
-  async function deactivate(id: number) { await api.post(`/usuarios/${id}/desactivar`, {}); reload() }
-  async function toggleGestion(id: number, value: boolean) { await api.post(`/usuarios/${id}/toggle-gestion`, { puede_gestionar_sistema: value }); reload() }
+  async function accept(id: number) {
+    try {
+      await api.post(`/usuarios/${id}/aceptar`, {})
+      toast.success('Usuario aprobado')
+      reload()
+    } catch (e) { toast.error(e instanceof Error ? e.message : 'Error approving user') }
+  }
+  async function deactivate(id: number) {
+    try {
+      await api.post(`/usuarios/${id}/desactivar`, {})
+      toast.success('Usuario desactivado')
+      reload()
+    } catch (e) { toast.error(e instanceof Error ? e.message : 'Error deactivating user') }
+  }
+  async function toggleGestion(id: number, value: boolean) {
+    try {
+      await api.post(`/usuarios/${id}/toggle-gestion`, { puede_gestionar_sistema: value })
+      toast.success(value ? 'Gestión concedida' : 'Gestión revocada')
+      reload()
+    } catch (e) { toast.error(e instanceof Error ? e.message : 'Error toggling gestion') }
+  }
   async function resetPassword(id: number) {
     const password = window.prompt('Nueva contraseña temporal para este usuario:')
     if (!password) return
-    await api.post(`/usuarios/${id}/reset-password`, { password })
-    alert('Contraseña cambiada.')
+    try {
+      await api.post(`/usuarios/${id}/reset-password`, { password })
+      toast.success('Contraseña cambiada')
+    } catch (e) { toast.error(e instanceof Error ? e.message : 'Error resetting password') }
   }
   return <>
     <PageHeader title="Usuarios" subtitle="Registro y aceptación desde el panel. Solo usuarios con gestión del sistema pueden aprobar cuentas y cambiar configuración." actions={<button className="btn secondary" onClick={reload}><RefreshCw size={16}/>Actualizar</button>} />

@@ -4,6 +4,7 @@ import { PriorityBadge, StateBadge } from '../components/Badges'
 import { api, exportUrl, fmtDate, type Presupuesto } from '../utils/api'
 import { useData } from '../utils/useData'
 import { Link } from 'react-router-dom'
+import { PedidoSummaryBadge } from '../components/PedidoSummary'
 
 export function Riesgo() {
   const { data, loading, error } = useData<Presupuesto[]>(() => api.get('/riesgo'), [])
@@ -14,7 +15,7 @@ export function Riesgo() {
     {loading ? <div className="card">Cargando riesgos...</div> : <div className="table-wrap"><table>
       <thead><tr><th>Nº presupuesto</th><th>Cliente</th><th>Gestor</th><th>Estado</th><th>Días desde aceptación</th><th>Pedido proveedor</th><th>Responsable actual</th><th>Siguiente acción</th><th>Fecha límite</th><th>Prioridad</th></tr></thead>
       <tbody>{(data || []).map(p => <tr key={p.id}>
-        <td><Link to={`/presupuestos/${p.id}`}><strong>{p.numero_presupuesto}</strong></Link></td><td>{p.cliente}</td><td>{p.gestor}</td><td><StateBadge value={p.estado}/></td><td>{p.fecha_aceptacion ? Math.max(Math.floor((Date.now()-new Date(p.fecha_aceptacion).getTime())/86400000),0) : '—'}</td><td>{p.pedido_proveedor_realizado ? 'Sí' : 'No'}</td><td>{p.responsable_actual || '—'}</td><td>{p.siguiente_accion || '—'}</td><td>{fmtDate(p.fecha_limite_siguiente_accion)}</td><td><PriorityBadge value={p.prioridad_calculada}/></td>
+        <td><Link to={`/presupuestos/${p.id}`}><strong>{p.numero_presupuesto}</strong></Link></td><td>{p.cliente}</td><td>{p.gestor}</td><td><StateBadge value={p.estado}/></td><td>{p.fecha_aceptacion ? Math.max(Math.floor((Date.now()-new Date(p.fecha_aceptacion).getTime())/86400000),0) : '—'}</td><td><PedidoSummaryBadge presupuesto={p} variant="table" /></td><td>{p.responsable_actual || '—'}</td><td>{p.siguiente_accion || '—'}</td><td>{fmtDate(p.fecha_limite_siguiente_accion)}</td><td><PriorityBadge value={p.prioridad_calculada}/></td>
       </tr>)}</tbody>
     </table></div>}
   </>
