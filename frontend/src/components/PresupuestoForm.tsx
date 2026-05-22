@@ -54,7 +54,7 @@ export function PresupuestoForm({ value, onChange, onSubmit, submitLabel = 'Guar
   }
 
   return (
-    <div className="grid" style={{ gap: 18 }}>
+    <div className="grid gap-5">
       <section className="card">
         <h3>A) Datos generales</h3>
         <div className="form-grid">
@@ -75,7 +75,7 @@ export function PresupuestoForm({ value, onChange, onSubmit, submitLabel = 'Guar
           <Field label="Fecha aceptación" error={errors.fecha_aceptacion}><input className="input" type="date" value={isoDate(value.fecha_aceptacion)} onChange={e => set('fecha_aceptacion', e.target.value || null)} onBlur={e => validateField('fecha_aceptacion', e.target.value)} /></Field>
           <Field label="Fecha cancelación / rechazo"><input className="input" type="date" value={isoDate(value.fecha_cancelacion_rechazo)} onChange={e => set('fecha_cancelacion_rechazo', e.target.value || null)} /></Field>
         </div>
-        <div className="form-grid two" style={{ marginTop: 14 }}>
+        <div className="form-grid two mt-4">
           <Field label="Motivo cancelación / rechazo"><textarea rows={3} value={value.motivo_cancelacion_rechazo || ''} onChange={e => set('motivo_cancelacion_rechazo', e.target.value)} /></Field>
         </div>
       </section>
@@ -100,16 +100,16 @@ export function PresupuestoForm({ value, onChange, onSubmit, submitLabel = 'Guar
           <Field label="Siguiente acción"><input className="input" value={value.siguiente_accion || ''} onChange={e => set('siguiente_accion', e.target.value)} /></Field>
           <Field label="Incidencia"><select className="select" value={value.incidencia ? 'true' : 'false'} onChange={e => set('incidencia', e.target.value === 'true')}><option value="false">No</option><option value="true">Sí</option></select></Field>
         </div>
-        <div className="form-grid two" style={{ marginTop: 14 }}>
+        <div className="form-grid two mt-4">
           <Field label="Descripción incidencia"><textarea rows={4} value={value.descripcion_incidencia || ''} onChange={e => set('descripcion_incidencia', e.target.value)} /></Field>
           <Field label="Observaciones internas"><textarea rows={4} value={value.observaciones || ''} onChange={e => set('observaciones', e.target.value)} /></Field>
         </div>
-        <div className="form-grid two" style={{ marginTop: 14 }}>
+        <div className="form-grid two mt-4">
           <Field label="Modificado por / creado por"><input className="input" value={value.modificado_por || ''} onChange={e => set('modificado_por', e.target.value)} placeholder="Opcional; si hay login se guarda automáticamente" /></Field>
         </div>
       </section>
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+      <div className="flex justify-end">
         <button className="btn" onClick={handleSubmit}><Save size={17} />{submitLabel}</button>
       </div>
     </div>

@@ -15,7 +15,7 @@ export function PresupuestoQuickView({ id, onClose }: { id: number | null; onClo
       </div>
       <div className="quick-view-content">
         {loading ? <div className="card">Cargando...</div> : data && <>
-          <div style={{display:'flex',gap:8,marginBottom:12}}>
+          <div className="flex gap-2 mb-3">
             <StateBadge value={data.estado}/><PriorityBadge value={data.prioridad_calculada}/>
           </div>
           <div className="quick-view-item"><strong>Cliente</strong>{data.cliente}</div>

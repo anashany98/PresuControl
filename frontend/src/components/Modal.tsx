@@ -48,37 +48,17 @@ export function Modal({ open, onClose, title, children }: ModalProps) {
   if (!open) return null
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="modal-title"
-      className="fixed inset-0 z-50 flex items-center justify-center"
-    >
-      <div
-        className="absolute inset-0 bg-black/50"
-        onClick={onClose}
-        aria-hidden="true"
-      />
-      <div
-        ref={modalRef}
-        tabIndex={-1}
-        className="relative bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-auto focus:outline-none"
-      >
-        <div className="flex items-center justify-between p-4 border-b">
-          <h2 id="modal-title" className="text-lg font-semibold">{title}</h2>
-          <button
-            onClick={onClose}
-            aria-label="Cerrar"
-            className="p-1 hover:bg-gray-100 rounded text-gray-500 hover:text-gray-700"
-          >
+    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div className="modal card" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 id="modal-title">{title}</h2>
+          <button className="btn secondary small" onClick={onClose} aria-label="Cerrar">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M18 6L6 18M6 6l12 12" />
             </svg>
           </button>
         </div>
-        <div className="p-4">
-          {children}
-        </div>
+        {children}
       </div>
     </div>
   )

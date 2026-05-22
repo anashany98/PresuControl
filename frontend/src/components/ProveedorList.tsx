@@ -81,16 +81,16 @@ export function ProveedorList({ presupuestoId, presupuestoImporte }: { presupues
 
   return (
     <section className="card">
-      <div className="toolbar" style={{ marginBottom: 12 }}>
-        <h3 style={{ margin: 0 }}>Proveedores</h3>
+      <div className="toolbar mb-3">
+        <h3 className="m-0">Proveedores</h3>
         <button className="btn secondary small" onClick={openAdd}><Plus size={14}/>Añadir</button>
       </div>
 
       {cotizados.length > 0 && (
-        <div className="flex gap-4" style={{ marginBottom: 16, padding: '8px 12px', background: '#f0f9ff', borderRadius: 6, fontSize: 13 }}>
+        <div className="flex gap-4 mb-4 px-3 py-2 rounded bg-blue-50 text-sm">
           <span>Mejor cotización: <strong>{euro(mejorCotizacion)}</strong></span>
           {diferencia !== null && (
-            <span style={{ color: diferencia <= 0 ? '#16a34a' : '#dc2626' }}>
+            <span className={diferencia <= 0 ? 'text-green-600' : 'text-red-600'}>
               {diferencia <= 0 ? 'Ahorro' : 'Diferencia'}: {diferencia <= 0 ? '' : '+'}{euro(Math.abs(diferencia))} ({((Math.abs(diferencia) / presupuestoImporte) * 100).toFixed(1)}%)
             </span>
           )}
@@ -101,8 +101,8 @@ export function ProveedorList({ presupuestoId, presupuestoImporte }: { presupues
       {items.length === 0 && !loading && <p className="muted">Sin proveedores asociados.</p>}
 
       {cotizados.length > 0 && (
-        <div style={{ marginBottom: 16 }}>
-          <h4 style={{ fontSize: 11, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Cotización recibida</h4>
+        <div className="mb-4">
+          <h4 className="text-2xs uppercase tracking-wider text-stone-500 mb-2">Cotización recibida</h4>
           <table>
             <thead><tr><th>Proveedor</th><th>Importe</th><th>Fecha</th><th>Notas</th><th></th></tr></thead>
             <tbody>
@@ -111,7 +111,7 @@ export function ProveedorList({ presupuestoId, presupuestoImporte }: { presupues
                   {editingId === pp.proveedor_id ? (
                     <>
                       <td><strong>{pp.proveedor.nombre}</strong></td>
-                      <td><input className="input" type="number" step="0.01" defaultValue={pp.importe_cotizado ?? ''} onChange={e => setEditForm(f => ({ ...f, importe_cotizado: Number(e.target.value) }))} style={{ width: 100 }} /></td>
+                      <td><input className="input w-24" type="number" step="0.01" defaultValue={pp.importe_cotizado ?? ''} onChange={e => setEditForm(f => ({ ...f, importe_cotizado: Number(e.target.value) }))} /></td>
                       <td><input className="input" type="date" defaultValue={pp.fecha_cotizacion?.slice(0, 10)} onChange={e => setEditForm(f => ({ ...f, fecha_cotizacion: e.target.value }))} /></td>
                       <td><input className="input" defaultValue={pp.notas ?? ''} onChange={e => setEditForm(f => ({ ...f, notas: e.target.value }))} /></td>
                       <td className="flex gap-1">
@@ -124,7 +124,7 @@ export function ProveedorList({ presupuestoId, presupuestoImporte }: { presupues
                       <td><strong>{pp.proveedor.nombre}</strong></td>
                       <td className="money">{pp.importe_cotizado != null ? euro(pp.importe_cotizado) : '—'}</td>
                       <td>{fmtDate(pp.fecha_cotizacion)}</td>
-                      <td style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pp.notas || '—'}</td>
+                      <td className="max-w-44 truncate">{pp.notas || '—'}</td>
                       <td className="flex gap-1">
                         <button className="btn secondary small" onClick={() => { setEditingId(pp.proveedor_id); setEditForm({}) }} aria-label={`Editar ${pp.proveedor?.nombre}`}><Pencil size={12}/></button>
                         <button className="btn danger small" onClick={() => removeItem(pp.proveedor_id)}><Trash2 size={12}/></button>
@@ -139,13 +139,13 @@ export function ProveedorList({ presupuestoId, presupuestoImporte }: { presupues
       )}
 
       {contactados.length > 0 && (
-        <div style={{ marginBottom: 16 }}>
-          <h4 style={{ fontSize: 11, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Contactados</h4>
-          <div className="flex gap-2" style={{ flexWrap: 'wrap' }}>
+        <div className="mb-4">
+          <h4 className="text-2xs uppercase tracking-wider text-stone-500 mb-2">Contactados</h4>
+          <div className="flex flex-wrap gap-2">
             {contactados.map(pp => (
-              <div key={pp.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px', border: '1px solid #e5e7eb', borderRadius: 4 }}>
-                <span style={{ fontSize: 13 }}>{pp.proveedor.nombre}</span>
-                <select className="select small" value={pp.estado} onChange={e => updateItem(pp.proveedor_id, { estado: e.target.value })} style={{ fontSize: 11 }}>
+              <div key={pp.id} className="flex items-center gap-1_5 px-2 py-1 border border-stone-200 rounded text-sm">
+                <span>{pp.proveedor.nombre}</span>
+                <select className="select small text-xs" value={pp.estado} onChange={e => updateItem(pp.proveedor_id, { estado: e.target.value })}>
                   {ESTADO_OPCIONES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
                 <button className="btn danger small" onClick={() => removeItem(pp.proveedor_id)}><Trash2 size={10}/></button>
@@ -157,11 +157,11 @@ export function ProveedorList({ presupuestoId, presupuestoImporte }: { presupues
 
       {descartados.length > 0 && (
         <div>
-          <h4 style={{ fontSize: 11, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Descartados</h4>
-          <div className="flex gap-2" style={{ flexWrap: 'wrap' }}>
+          <h4 className="text-2xs uppercase tracking-wider text-stone-500 mb-2">Descartados</h4>
+          <div className="flex flex-wrap gap-2">
             {descartados.map(pp => (
-              <div key={pp.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px', border: '1px solid #fecaca', borderRadius: 4, background: '#fef2f2' }}>
-                <span style={{ fontSize: 13, color: '#ef4444', textDecoration: 'line-through' }}>{pp.proveedor.nombre}</span>
+              <div key={pp.id} className="flex items-center gap-1_5 px-2 py-1 border border-red-200 rounded text-sm bg-red-50">
+                <span className="text-red-600 line-through text-sm">{pp.proveedor.nombre}</span>
                 <button className="btn danger small" onClick={() => removeItem(pp.proveedor_id)}><Trash2 size={10}/></button>
               </div>
             ))}

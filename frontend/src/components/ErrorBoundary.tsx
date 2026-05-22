@@ -27,15 +27,15 @@ export class ErrorBoundary extends Component<Props, State> {
         return this.props.fallback
       }
       return (
-        <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 p-4">
-          <div className="bg-white p-8 rounded-lg shadow-md max-w-md w-full">
-            <h2 className="text-xl font-bold text-red-600 mb-4">Algo salió mal</h2>
-            <p className="text-gray-600 mb-4">
+        <div className="auth-page">
+          <div className="card max-w-md">
+            <h2 className="text-xl font-bold mb-4 text-danger">Algo salió mal</h2>
+            <p className="text-stone-600 mb-4">
               Ha ocurrido un error inesperado. Por favor, recarga la página.
             </p>
             <button
               onClick={() => window.location.reload()}
-              className="w-full bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700 transition-colors"
+              className="btn w-full"
             >
               Recargar página
             </button>
