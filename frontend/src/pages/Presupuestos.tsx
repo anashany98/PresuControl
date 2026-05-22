@@ -4,8 +4,10 @@ import { Columns3, Download, Plus, RefreshCw, RotateCcw } from 'lucide-react'
 import { PageHeader } from '../components/PageHeader'
 import { PriorityBadge, StateBadge } from '../components/Badges'
 import { SkeletonTable } from '../components/Skeleton'
+import { OptionInput } from '../components/OptionInput'
 import { ESTADOS, api, euro, exportUrl, fmtDate, type PaginatedPresupuestos, type Presupuesto } from '../utils/api'
 import { useData } from '../utils/useData'
+import { useMetadataOptions } from '../utils/useMetadataOptions'
 import { PedidoSummaryBadge } from '../components/PedidoSummary'
 
 const PRIORIDADES = ['Verde','Amarillo','Naranja','Rojo','Crítico']
@@ -15,6 +17,7 @@ export function Presupuestos() {
   const [params, setParams] = useSearchParams({ page: '1', page_size: '50', ocultar_cerrados: 'true' })
   const [visible, setVisible] = useState<string[]>(defaultColumns)
   const [compact, setCompact] = useState(false)
+  const metadataOptions = useMetadataOptions()
   const query = params.toString()
   const { data, loading, error, reload } = useData<PaginatedPresupuestos>(() => api.get(`/presupuestos-page?${query}`), [query])
   const set = (key: string, value: string) => {
@@ -36,8 +39,8 @@ export function Presupuestos() {
           <input className="input" style={{ maxWidth: 310 }} value={params.get('search') || ''} onChange={e => set('search', e.target.value)} placeholder="Buscar por nº, cliente, obra, gestor..." />
           <select className="select" style={{ maxWidth: 260 }} value={params.get('estado') || ''} onChange={e => set('estado', e.target.value)}><option value="">Todos los estados</option>{ESTADOS.map(e => <option key={e}>{e}</option>)}</select>
           <select className="select" style={{ maxWidth: 170 }} value={params.get('prioridad') || ''} onChange={e => set('prioridad', e.target.value)}><option value="">Todas prioridades</option>{PRIORIDADES.map(e => <option key={e}>{e}</option>)}</select>
-          <input className="input" style={{ maxWidth: 160 }} value={params.get('gestor') || ''} onChange={e => set('gestor', e.target.value)} placeholder="Gestor" />
-          <input className="input" style={{ maxWidth: 170 }} value={params.get('proveedor') || ''} onChange={e => set('proveedor', e.target.value)} placeholder="Proveedor" />
+          <OptionInput className="input" style={{ maxWidth: 160 }} options={metadataOptions.gestores} value={params.get('gestor') || ''} onChange={e => set('gestor', e.target.value)} placeholder="Gestor" />
+          <OptionInput className="input" style={{ maxWidth: 170 }} options={metadataOptions.proveedores} value={params.get('proveedor') || ''} onChange={e => set('proveedor', e.target.value)} placeholder="Proveedor" />
           <select className="select" style={{ maxWidth: 150 }} value={params.get('incidencia') || ''} onChange={e => set('incidencia', e.target.value)}><option value="">Incidencias</option><option value="true">Con incidencia</option><option value="false">Sin incidencia</option></select>
         </div>
         <div className="toolbar" style={{ marginTop: 10 }}>

@@ -3,7 +3,7 @@ import { Download } from 'lucide-react'
 import { PageHeader } from '../components/PageHeader'
 import { StatCard } from '../components/StatCard'
 import { AlertTriangle, Clock3, Euro, TrendingUp } from 'lucide-react'
-import { api, euro } from '../utils/api'
+import { api, euro, getAuthToken } from '../utils/api'
 import { useData } from '../utils/useData'
 import { useToast } from '../utils/toast'
 
@@ -21,7 +21,7 @@ type Report = {
 
 async function downloadExcel(toastFn: (msg: string) => void) {
   try {
-    const token = localStorage.getItem('presucontrol_token')
+    const token = getAuthToken()
     const res = await fetch('/api/reports/export', {
       headers: { Authorization: `Bearer ${token}` }
     })

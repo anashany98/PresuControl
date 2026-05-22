@@ -126,7 +126,7 @@ export function ProveedorList({ presupuestoId, presupuestoImporte }: { presupues
                       <td>{fmtDate(pp.fecha_cotizacion)}</td>
                       <td style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pp.notas || '—'}</td>
                       <td className="flex gap-1">
-                        <button className="btn secondary small" onClick={() => { setEditingId(pp.proveedor_id); setEditForm({}) }}><Pencil size={12}/></button>
+                        <button className="btn secondary small" onClick={() => { setEditingId(pp.proveedor_id); setEditForm({}) }} aria-label={`Editar ${pp.proveedor?.nombre}`}><Pencil size={12}/></button>
                         <button className="btn danger small" onClick={() => removeItem(pp.proveedor_id)}><Trash2 size={12}/></button>
                       </td>
                     </>

@@ -50,6 +50,24 @@ def test_clear_failed_logins_resets_counter(test_db):
     enforce_login_rate_limit(email, req, test_db)
 
 
+def test_rate_limit_check_does_not_increment_counter(test_db):
+    import os
+    original = os.getenv("LOGIN_RATE_LIMIT_ATTEMPTS")
+    os.environ["LOGIN_RATE_LIMIT_ATTEMPTS"] = "2"
+    try:
+        req = fake_request()
+        email = "test@example.com"
+        enforce_login_rate_limit(email, req, test_db)
+        enforce_login_rate_limit(email, req, test_db)
+        register_failed_login(email, req, test_db)
+        enforce_login_rate_limit(email, req, test_db)
+    finally:
+        if original is not None:
+            os.environ["LOGIN_RATE_LIMIT_ATTEMPTS"] = original
+        elif "LOGIN_RATE_LIMIT_ATTEMPTS" in os.environ:
+            del os.environ["LOGIN_RATE_LIMIT_ATTEMPTS"]
+
+
 def test_rate_limit_per_ip(test_db):
     import os
     original = os.getenv("LOGIN_RATE_LIMIT_ATTEMPTS")

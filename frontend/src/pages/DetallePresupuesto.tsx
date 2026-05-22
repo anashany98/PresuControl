@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { Archive, ArrowLeft, CheckCircle2, MessageSquarePlus, Package, PackageCheck, Pencil, Plus, RefreshCw, Send, ShieldAlert, Trash2, Truck, Users, XCircle } from 'lucide-react'
 import { PageHeader } from '../components/PageHeader'
 import { PresupuestoForm } from '../components/PresupuestoForm'
+import { OptionInput } from '../components/OptionInput'
 import { PriorityBadge, StateBadge } from '../components/Badges'
 import { SkeletonCard } from '../components/Skeleton'
 import { api, fmtDate, isoDate, euro, type Presupuesto, type PedidoProveedor } from '../utils/api'
@@ -11,6 +12,7 @@ import { useData } from '../utils/useData'
 import { ProveedorList } from '../components/ProveedorList'
 import { useToast } from '../utils/toast'
 import { PedidoSummaryBadge } from '../components/PedidoSummary'
+import { useMetadataOptions } from '../utils/useMetadataOptions'
 
 type Comentario = { id: number; comentario: string; nombre_opcional?: string; usuario_nombre?: string; usuario_email?: string; creado_en: string }
 type Historial = { id: number; campo: string; valor_anterior?: string; valor_nuevo?: string; descripcion: string; nombre_opcional?: string; usuario_nombre?: string; usuario_email?: string; creado_en: string }
@@ -122,7 +124,7 @@ export function DetallePresupuesto() {
 
   return <>
     <PageHeader title={`${data.numero_presupuesto} · ${String(data.cliente || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}`} subtitle={String(data.obra_referencia || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')} actions={<Link className="btn secondary" to="/presupuestos"><ArrowLeft size={16}/>Volver</Link>} />
-    <div className="toolbar"><StateBadge value={data.estado}/><PriorityBadge value={data.prioridad_calculada}/><span className="badge state">Días parado: {data.dias_parado}</span><span className="badge state" title="El control de versión previene que dos personas editen el mismo presupuesto a la vez. Si la versión no coincide, la edición será rechazada.">Versión: {data.version}</span>{data.archivado && <span className="badge danger">Archivado</span>}<button className="btn secondary small" onClick={reload}><RefreshCw size={14}/>Actualizar</button></div>
+    <div className="toolbar"><StateBadge value={data.estado}/><PriorityBadge value={data.prioridad_calculada}/><span className="badge state">Días parado: {data.dias_parado}</span><span className="badge state" title="El control de versión previene que dos personas editen el mismo presupuesto a la vez. Si la versión no coincide, la edición será rechazada.">Versión: {data.version}</span>{data.archivado && <span className="badge danger">Archivado</span>}<button className="btn secondary small" onClick={reload} aria-label="Actualizar"><RefreshCw size={14}/>Actualizar</button></div>
     <section className="card" style={{ marginBottom: 16 }}>
       <h3>Acciones rápidas guiadas</h3>
       <div className="toolbar" style={{ marginBottom: 0 }}>
@@ -271,6 +273,7 @@ export function DetallePresupuesto() {
 
 function QuickActionModal({ action, base, onClose, onSubmit }: { action: string; base: Presupuesto; onClose: () => void; onSubmit: (payload: QuickPayload) => void }) {
   const { user } = useAuth()
+  const metadataOptions = useMetadataOptions()
   const [payload, setPayload] = useState<QuickPayload>({
     action,
     fecha_envio_cliente: isoDate(base.fecha_envio_cliente) || new Date().toISOString().slice(0, 10),
@@ -308,7 +311,7 @@ function QuickActionModal({ action, base, onClose, onSubmit }: { action: string;
             <Field label="Fecha límite"><input className="input" type="date" value={payload.fecha_limite_siguiente_accion || ''} onChange={e => set('fecha_limite_siguiente_accion', e.target.value)} /></Field>
           </>}
           {action === 'crear_pedido_proveedor' && <>
-            <Field label="Proveedor"><input className="input" value={payload.proveedor || ''} onChange={e => set('proveedor', e.target.value)} /></Field>
+            <Field label="Proveedor"><OptionInput className="input" options={metadataOptions.proveedores} value={payload.proveedor || ''} onChange={e => set('proveedor', e.target.value)} /></Field>
             <Field label="Nº pedido proveedor"><input className="input" value={payload.numero_pedido_proveedor || ''} onChange={e => set('numero_pedido_proveedor', e.target.value)} /></Field>
             <Field label="Fecha pedido proveedor"><input className="input" type="date" value={payload.fecha_pedido_proveedor || ''} onChange={e => set('fecha_pedido_proveedor', e.target.value)} /></Field>
             <Field label="Fecha límite para confirmar plazo"><input className="input" type="date" value={payload.fecha_limite_siguiente_accion || ''} onChange={e => set('fecha_limite_siguiente_accion', e.target.value)} /></Field>
@@ -340,6 +343,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 }
 
 function PedidoFormModal({ pedido, onClose, onSubmit }: { pedido: PedidoProveedor | null; onClose: () => void; onSubmit: (payload: Partial<PedidoProveedor>) => void }) {
+  const metadataOptions = useMetadataOptions()
   const [form, setForm] = useState({
     proveedor: pedido?.proveedor || '',
     numero_pedido: pedido?.numero_pedido || '',
@@ -349,11 +353,15 @@ function PedidoFormModal({ pedido, onClose, onSubmit }: { pedido: PedidoProveedo
     fecha_entrega_prevista: pedido?.fecha_entrega_prevista || '',
     observaciones: pedido?.observaciones || '',
   })
-  const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
+  const [formError, setFormError] = useState<string | null>(null)
+  const set = (k: string, v: string) => {
+    setFormError(null)
+    setForm(f => ({ ...f, [k]: v }))
+  }
 
   function handleSubmit() {
     if (!form.proveedor.trim() || !form.numero_pedido.trim()) {
-      alert('Proveedor y número de pedido son obligatorios')
+      setFormError('Proveedor y número de pedido son obligatorios.')
       return
     }
     onSubmit({
@@ -372,7 +380,7 @@ function PedidoFormModal({ pedido, onClose, onSubmit }: { pedido: PedidoProveedo
       <div className="modal card">
         <h3>{pedido ? 'Editar pedido' : 'Nuevo pedido proveedor'}</h3>
         <div className="form-grid two">
-          <Field label="Proveedor *"><input className="input" value={form.proveedor} onChange={e => set('proveedor', e.target.value)} placeholder="Nombre del proveedor" /></Field>
+          <Field label="Proveedor *"><OptionInput className="input" options={metadataOptions.proveedores} value={form.proveedor} onChange={e => set('proveedor', e.target.value)} placeholder="Nombre del proveedor" /></Field>
           <Field label="Nº Pedido *"><input className="input" value={form.numero_pedido} onChange={e => set('numero_pedido', e.target.value)} placeholder="Número de pedido" /></Field>
           <Field label="Fecha pedido"><input className="input" type="date" value={form.fecha_pedido} onChange={e => set('fecha_pedido', e.target.value)} /></Field>
           <Field label="Importe (€)"><input className="input" type="number" step="0.01" value={form.importe} onChange={e => set('importe', e.target.value)} placeholder="0.00" /></Field>
@@ -386,6 +394,7 @@ function PedidoFormModal({ pedido, onClose, onSubmit }: { pedido: PedidoProveedo
           <Field label="Fecha entrega prevista"><input className="input" type="date" value={form.fecha_entrega_prevista} onChange={e => set('fecha_entrega_prevista', e.target.value)} /></Field>
         </div>
         <Field label="Observaciones"><textarea className="input" rows={3} value={form.observaciones} onChange={e => set('observaciones', e.target.value)} placeholder="Observaciones..." /></Field>
+        {formError && <div className="error">{formError}</div>}
         <div className="modal-actions">
           <button className="btn secondary" onClick={onClose}>Cancelar</button>
           <button className="btn" onClick={handleSubmit}>{pedido ? 'Guardar' : 'Crear pedido'}</button>

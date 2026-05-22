@@ -56,6 +56,10 @@ function KanbanCard({ presupuesto, focusId, columns, onPedidoClick, onTarget }: 
         <span className="kanban-card-version">v{presupuesto.version}</span>
       </div>
       <div className="kanban-card-cliente">{String(presupuesto.cliente || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+      {(presupuesto.proveedor || presupuesto.responsable_actual) && <div className="kanban-card-meta">
+        {presupuesto.proveedor && <span className="kanban-card-provider">{presupuesto.proveedor}</span>}
+        {presupuesto.responsable_actual && <span className="kanban-card-responsable">{presupuesto.responsable_actual}</span>}
+      </div>}
       <div className="kanban-card-ref">{String(presupuesto.obra_referencia || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
       <div className="kanban-card-divider" />
       <div className="kanban-card-footer">

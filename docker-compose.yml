@@ -32,6 +32,10 @@ services:
       - external-network
     environment:
       DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-20}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-30}
+      DB_POOL_TIMEOUT: ${DB_POOL_TIMEOUT:-30}
+      DB_POOL_RECYCLE: ${DB_POOL_RECYCLE:-3600}
       CORS_ORIGINS: ${CORS_ORIGINS:?Set CORS_ORIGINS in .env}
       AUTH_ENABLED: ${AUTH_ENABLED:-true}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in .env}

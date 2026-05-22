@@ -39,7 +39,7 @@ export function PasswordReset() {
       {error && <div className="error">{error}</div>}
       {message && <div className="success">{message}</div>}
       {!token && <div className="error">Falta token de recuperación.</div>}
-      <label>Nueva contraseña<input className="input" type="password" minLength={6} value={password} onChange={e => setPassword(e.target.value)} required /></label>
+      <label>Nueva contraseña<input className="input" type="password" minLength={12} value={password} onChange={e => setPassword(e.target.value)} required /></label>
       <button className="btn" type="submit" disabled={!token}>Cambiar contraseña</button>
       <p className="muted"><Link to="/login"><strong>Volver al login</strong></Link></p>
     </form>

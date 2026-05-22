@@ -2,8 +2,9 @@ import { useMemo, useState } from 'react'
 import { AlertTriangle, CheckCircle2, Clock3, Download, FilePlus, FileText, Package, PackageCheck, ShieldAlert, TrendingUp } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { api, euro, fmtDate, type Presupuesto, ESTADOS } from '../utils/api'
+import { ESTADO_COLOR, PRIORITY_COLOR } from '../utils/tokens'
 import { useData } from '../utils/useData'
-import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
+import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { PedidoSummaryBadge } from '../components/PedidoSummary'
 import { getPedidoExceptionScore, getPedidoSummary } from '../utils/pedidoSummary'
 
@@ -13,37 +14,11 @@ type DashboardData = {
   pedidos_pendientes?: Presupuesto[]
 }
 
-const COLORS = {
-  pendiente: '#f59e0b',
-  enviado: '#3b82f6',
-  aceptado: '#22c55e',
-  pedido: '#8b5cf6',
-  plazo: '#06b6d4',
-  fabricacion: '#ec4899',
-  entregado: '#6b7280',
-  cerrado: '#1c1917',
-  incidencia: '#ef4444',
-}
+// COLORS and PRIORITY_COLORS imported from tokens.ts
 
-const ESTADO_COLORS: Record<string, string> = {
-  'Pendiente de enviar': '#e5e7eb',
-  'Enviado al cliente': '#3b82f6',
-  'Aceptado - pendiente pedido proveedor': '#22c55e',
-  'Pedido proveedor realizado': '#8b5cf6',
-  'Plazo proveedor confirmado': '#06b6d4',
-  'En preparación / fabricación': '#ec4899',
-  'Entregado / cerrado': '#6b7280',
-  'Cancelado / rechazado': '#1c1917',
-  'Bloqueado / incidencia': '#ef4444',
-}
+// ESTADO_COLORS imported from tokens.ts
 
-const PRIORITY_COLORS: Record<string, string> = {
-  'Crítico': '#dc2626',
-  'Rojo': '#ef4444',
-  'Naranja': '#f97316',
-  'Amarillo': '#eab308',
-  'Verde': '#22c55e',
-}
+// PRIORITY_COLORS imported from tokens.ts
 
 function MiniStat({ label, value, sublabel, tone }: { label: string; value: string | number; sublabel?: string; tone?: string }) {
   return (
@@ -92,8 +67,8 @@ function CompactList({ items, maxItems = 8 }: { items: Presupuesto[]; maxItems?:
         <Link to={`/presupuestos/${p.id}`} className="compact-row-sm" key={p.id}>
           <span className="num-sm">{p.numero_presupuesto}</span>
           <span className="cliente-sm">{p.cliente}</span>
-          <span className={`priority-dot-sm`} style={{ background: PRIORITY_COLORS[p.prioridad_calculada] || '#ccc' }} />
-          <span className="estado-sm text-xs" style={{ color: ESTADO_COLORS[p.estado] }}>{p.estado.split(' - ')[0]}</span>
+          <span className={`priority-dot-sm`} style={{ background: PRIORITY_COLOR[p.prioridad_calculada] || '#ccc' }} />
+          <span className="estado-sm text-xs" style={{ color: ESTADO_COLOR[p.estado] }}>{p.estado.split(' - ')[0]}</span>
           {p.fecha_limite_siguiente_accion && <span className="fecha-sm text-xs muted">{fmtDate(p.fecha_limite_siguiente_accion)}</span>}
         </Link>
       ))}
@@ -128,7 +103,7 @@ export function Dashboard() {
   const estadoCounts = ESTADOS.map(e => ({
     estado: e.split(' - ')[0],
     count: uniquePresupuestos.filter(p => p.estado === e).length,
-    color: ESTADO_COLORS[e] || '#e5e7eb',
+    color: ESTADO_COLOR[e] || '#e5e7eb',
   })).filter(d => d.count > 0)
 
   const priorityCounts = { 'Crítico': 0, 'Rojo': 0, 'Naranja': 0, 'Amarillo': 0, 'Verde': 0 }
@@ -189,13 +164,13 @@ export function Dashboard() {
             <h3 className="text-sm font-medium">Prioridades</h3>
             <div className="flex gap-1">
               {Object.entries(priorityCounts).map(([p, c]) => (
-                <span key={p} className="priority-badge" style={{ background: PRIORITY_COLORS[p], opacity: c > 0 ? 1 : 0.2 }}>{c}</span>
+                <span key={p} className="priority-badge" style={{ background: PRIORITY_COLOR[p], opacity: c > 0 ? 1 : 0.2 }}>{c}</span>
               ))}
             </div>
           </div>
           <div className="priority-breakdown">
             {Object.entries(priorityCounts).map(([p, c]) => (
-              <PriorityRow key={p} prioridad={p} count={c} color={PRIORITY_COLORS[p]} />
+              <PriorityRow key={p} prioridad={p} count={c} color={PRIORITY_COLOR[p]} />
             ))}
           </div>
         </div>
@@ -213,7 +188,8 @@ export function Dashboard() {
               <h3 className="text-sm font-medium mb-2">Riesgo</h3>
               <ResponsiveContainer width="100%" height={100}>
                 <PieChart>
-                  <Pie data={riesgoData} cx="50%" cy="50%" innerRadius={30} outerRadius={45} paddingAngle={2} dataKey="value">
+                  <Legend layout="horizontal" verticalAlign="bottom" wrapperStyle={{ fontSize: 11 }} />
+                  <Pie data={riesgoData} cx="50%" cy="50%" innerRadius={30} outerRadius={45} paddingAngle={2} dataKey="value" animationBegin={0} animationDuration={600} animationEasing="ease-out">
                     {riesgoData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
                   </Pie>
                   <Tooltip formatter={(v, n) => [`${v}`, n]} />

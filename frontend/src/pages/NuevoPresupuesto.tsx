@@ -1,14 +1,17 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/PageHeader'
+import { OptionInput } from '../components/OptionInput'
 import { api, ESTADOS, isoDate, type Presupuesto } from '../utils/api'
 import { useToast } from '../utils/toast'
+import { useMetadataOptions } from '../utils/useMetadataOptions'
 
 type Tab = 'datos' | 'seguimiento' | 'pedidos' | 'control'
 
 export function NuevoPresupuesto() {
   const navigate = useNavigate()
   const toast = useToast()
+  const metadataOptions = useMetadataOptions()
   const [tab, setTab] = useState<Tab>('datos')
   const [form, setForm] = useState<Partial<Presupuesto> & { modificado_por?: string }>({
     estado: 'Pendiente de enviar',
@@ -51,7 +54,7 @@ export function NuevoPresupuesto() {
         <div className="field"><label>Nº presupuesto FactuSOL *</label><input className="input" value={form.numero_presupuesto || ''} onChange={e => set('numero_presupuesto', e.target.value)} /></div>
         <div className="field"><label>Cliente *</label><input className="input" value={form.cliente || ''} onChange={e => set('cliente', e.target.value)} /></div>
         <div className="field"><label>Obra / referencia *</label><input className="input" value={form.obra_referencia || ''} onChange={e => set('obra_referencia', e.target.value)} /></div>
-        <div className="field"><label>Gestor *</label><input className="input" value={form.gestor || ''} onChange={e => set('gestor', e.target.value)} /></div>
+        <div className="field"><label>Gestor *</label><OptionInput className="input" options={metadataOptions.gestores} value={form.gestor || ''} onChange={e => set('gestor', e.target.value)} /></div>
         <div className="field"><label>Importe *</label><input className="input" type="number" step="0.01" value={form.importe ?? ''} onChange={e => set('importe', Number(e.target.value))} /></div>
         <div className="field"><label>Fecha presupuesto *</label><input className="input" type="date" value={isoDate(form.fecha_presupuesto)} onChange={e => set('fecha_presupuesto', e.target.value)} /></div>
       </div>
@@ -72,7 +75,7 @@ export function NuevoPresupuesto() {
       <h3>C) Pedido proveedor</h3>
       <p className="muted" style={{ marginBottom: 14 }}>Después de crear el presupuesto puedes añadir pedidos desde la pestaña "Pedidos Proveedor".</p>
       <div className="form-grid">
-        <div className="field"><label>Proveedor</label><input className="input" value={form.proveedor || ''} onChange={e => set('proveedor', e.target.value)} /></div>
+        <div className="field"><label>Proveedor</label><OptionInput className="input" options={metadataOptions.proveedores} value={form.proveedor || ''} onChange={e => set('proveedor', e.target.value)} /></div>
         <div className="field"><label>Pedido proveedor realizado</label><select className="select" value={form.pedido_proveedor_realizado ? 'true' : 'false'} onChange={e => set('pedido_proveedor_realizado', e.target.value === 'true')}><option value="false">No</option><option value="true">Sí</option></select></div>
         <div className="field"><label>Nº pedido proveedor</label><input className="input" value={form.numero_pedido_proveedor || ''} onChange={e => set('numero_pedido_proveedor', e.target.value)} /></div>
         <div className="field"><label>Fecha pedido proveedor</label><input className="input" type="date" value={isoDate(form.fecha_pedido_proveedor)} onChange={e => set('fecha_pedido_proveedor', e.target.value || null)} /></div>

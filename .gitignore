@@ -26,6 +26,7 @@ build/
 # Frontend
 node_modules/
 frontend/node_modules/
+frontend/dist/
 *.tsbuildinfo
 
 # IDE
@@ -43,6 +44,7 @@ Thumbs.db
 .coverage
 htmlcov/
 .mypy_cache/
+*.db
 
 # Docker
 .dockerignore
@@ -53,6 +55,12 @@ htmlcov/
 
 # Local brainstorming companion
 .superpowers/
+.claude/
+.sisyphus/
 
 # Alembic
 alembic/versions/*.pyc
+
+.ruff_cache/
+.playwright-mcp/
+frontend/test-results/

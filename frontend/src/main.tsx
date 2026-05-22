@@ -1,11 +1,11 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { createBrowserRouter, Navigate, RouterProvider } from 'react-router-dom'
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, type ReactNode } from 'react'
 import './styles.css'
 import { Layout } from './components/Layout'
 import { ErrorBoundary } from './components/ErrorBoundary'
-import { AuthProvider, useAuth } from './utils/auth'
+import { AuthProvider, isSystemAdmin, useAuth } from './utils/auth'
 import { ToastProvider } from './utils/toast'
 
 // Lazy-loaded pages for code splitting (named exports → thenable wrapper)
@@ -49,6 +49,15 @@ function ProtectedLayout() {
   return <Layout />
 }
 
+function RequireRole({ allowed, children }: { allowed: Array<'admin_sistema' | 'gestion'>; children: ReactNode }) {
+  const { user, loading } = useAuth()
+  if (loading) return <div className="auth-page"><div className="card">Cargando sesi?n...</div></div>
+  if (!user) return <Navigate to="/login" replace />
+  const role = isSystemAdmin(user) ? 'admin_sistema' : 'gestion'
+  if (!allowed.includes(role)) return <Navigate to="/" replace />
+  return <>{children}</>
+}
+
 const router = createBrowserRouter([
   { path: '/login', element: <Suspense fallback={<PageLoader />}><Login /></Suspense> },
   { path: '/registro', element: <Suspense fallback={<PageLoader />}><Registro /></Suspense> },
@@ -56,6 +65,7 @@ const router = createBrowserRouter([
   { path: '/reset-password', element: <Suspense fallback={<PageLoader />}><PasswordReset /></Suspense> },
   { path: '/', element: <ProtectedLayout />, children: [
     { index: true, element: <Suspense fallback={<PageLoader />}><Dashboard /></Suspense> },
+    { path: 'dashboard', element: <Suspense fallback={<PageLoader />}><Dashboard /></Suspense> },
     { path: 'hoy', element: <Suspense fallback={<PageLoader />}><Hoy /></Suspense> },
     { path: 'mi-mesa', element: <Suspense fallback={<PageLoader />}><MiMesa /></Suspense> },
     { path: 'aceptados-sin-pedido', element: <Suspense fallback={<PageLoader />}><AceptadosSinPedido /></Suspense> },
@@ -71,10 +81,11 @@ const router = createBrowserRouter([
     { path: 'reportes', element: <Suspense fallback={<PageLoader />}><Reportes /></Suspense> },
     { path: 'importar', element: <Suspense fallback={<PageLoader />}><Importar /></Suspense> },
     { path: 'avisos', element: <Suspense fallback={<PageLoader />}><Avisos /></Suspense> },
-    { path: 'logs', element: <Suspense fallback={<PageLoader />}><Logs /></Suspense> },
+    { path: 'logs', element: <RequireRole allowed={['admin_sistema']}><Suspense fallback={<PageLoader />}><Logs /></Suspense></RequireRole> },
     { path: 'notificaciones', element: <Suspense fallback={<PageLoader />}><Notificaciones /></Suspense> },
-    { path: 'usuarios', element: <Suspense fallback={<PageLoader />}><Usuarios /></Suspense> },
-    { path: 'configuracion', element: <Suspense fallback={<PageLoader />}><Configuracion /></Suspense> },
+    { path: 'usuarios', element: <RequireRole allowed={['admin_sistema']}><Suspense fallback={<PageLoader />}><Usuarios /></Suspense></RequireRole> },
+    { path: 'configuracion', element: <RequireRole allowed={['admin_sistema']}><Suspense fallback={<PageLoader />}><Configuracion /></Suspense></RequireRole> },
+    { path: '*', element: <Navigate to="/" replace /> },
   ]},
 ])
 

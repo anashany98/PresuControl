@@ -5,6 +5,8 @@ import { api, ESTADO_ENTREGA_OPTIONS, euro, fmtDate, isoDate, type EstadoEntrega
 import { getPedidoSummary, type PedidoSummaryItem } from '../utils/pedidoSummary'
 import { useToast } from '../utils/toast'
 import { PedidoSummaryBadge } from './PedidoSummary'
+import { OptionInput } from './OptionInput'
+import { useMetadataOptions } from '../utils/useMetadataOptions'
 
 type Props = {
   presupuesto: Presupuesto
@@ -48,6 +50,7 @@ function RowWarnings({ pedido }: { pedido: PedidoSummaryItem }) {
 
 export function PedidoSummaryPanel({ presupuesto, onClose, onUpdated }: Props) {
   const summary = getPedidoSummary(presupuesto)
+  const metadataOptions = useMetadataOptions()
   const [editingId, setEditingId] = useState<number | null>(null)
   const [draft, setDraft] = useState<Draft | null>(null)
   const [saving, setSaving] = useState(false)
@@ -113,7 +116,7 @@ export function PedidoSummaryPanel({ presupuesto, onClose, onUpdated }: Props) {
               <div className="pedido-panel-row" key={pedido.id}>
                 {editing ? (
                   <div className="pedido-panel-edit-grid">
-                    <label>Proveedor<input className="input" value={draft.proveedor} onChange={e => set('proveedor', e.target.value)} /></label>
+                    <label>Proveedor<OptionInput className="input" options={metadataOptions.proveedores} value={draft.proveedor} onChange={e => set('proveedor', e.target.value)} /></label>
                     <label>Nº pedido<input className="input" value={draft.numero_pedido} onChange={e => set('numero_pedido', e.target.value)} /></label>
                     <label>Fecha pedido<input className="input" type="date" value={draft.fecha_pedido} onChange={e => set('fecha_pedido', e.target.value)} /></label>
                     <label>Importe<input className="input" type="number" step="0.01" value={draft.importe} onChange={e => set('importe', e.target.value)} /></label>

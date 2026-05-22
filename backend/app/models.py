@@ -59,7 +59,7 @@ class Presupuesto(Base):
     comentarios: Mapped[list["Comentario"]] = relationship(back_populates="presupuesto", cascade="all, delete-orphan")
     historial: Mapped[list["HistorialCambio"]] = relationship(back_populates="presupuesto", cascade="all, delete-orphan")
     pedidos: Mapped[list["PedidoProveedor"]] = relationship(back_populates="presupuesto", cascade="all, delete-orphan")
-    presupuestos_asociados: Mapped[list["PresupuestoProveedor"]] = relationship(back_populates="presupuesto", cascade="all, delete-orphan")
+    proveedores_asociados: Mapped[list["PresupuestoProveedor"]] = relationship(back_populates="presupuesto", cascade="all, delete-orphan")
 
 
 class PedidoProveedor(Base):
@@ -69,13 +69,14 @@ class PedidoProveedor(Base):
             "estado_entrega IN ('pendiente','parcial','completado')",
             name="ck_estado_entrega_valid"
         ),
+        CheckConstraint("importe IS NULL OR importe >= 0", name="ck_pedido_importe_no_negativo"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     presupuesto_id: Mapped[int] = mapped_column(ForeignKey("presupuestos.id", ondelete="CASCADE"), index=True)
-    # TODO: Normalize `proveedor` field - should be ForeignKey to proveedores.id, not free-text String.
-    # Requires data migration to map existing string values to proveedor IDs.
+    proveedor_id: Mapped[int | None] = mapped_column(ForeignKey("proveedores.id", ondelete="SET NULL"), nullable=True, index=True)
     proveedor: Mapped[str] = mapped_column(String(255), nullable=False)
+    proveedor_nombre_snapshot: Mapped[str | None] = mapped_column(String(255), nullable=True)
     numero_pedido: Mapped[str | None] = mapped_column(String(120), nullable=True)
     fecha_pedido: Mapped[Date | None] = mapped_column(Date, nullable=True)
     importe: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
@@ -87,6 +88,7 @@ class PedidoProveedor(Base):
     actualizado_en: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     presupuesto: Mapped[Presupuesto] = relationship(back_populates="pedidos")
+    proveedor_catalogo: Mapped["Proveedor | None"] = relationship(back_populates="pedidos")
 
 
 class Comentario(Base):
@@ -125,7 +127,10 @@ class AppSetting(Base):
 
 class Usuario(Base):
     __tablename__ = "usuarios"
-    __table_args__ = (UniqueConstraint("email", name="uq_usuario_email"),)
+    __table_args__ = (
+        UniqueConstraint("email", name="uq_usuario_email"),
+        CheckConstraint("rol IN ('admin_sistema','gestion')", name="ck_usuario_rol_valid"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     nombre: Mapped[str] = mapped_column(String(120), nullable=False)
@@ -136,6 +141,7 @@ class Usuario(Base):
     aprobado_en: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     aprobado_por: Mapped[str | None] = mapped_column(String(255), nullable=True)
     puede_gestionar_sistema: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
+    rol: Mapped[str] = mapped_column(String(40), nullable=False, default="gestion", server_default="gestion", index=True)
     reset_password_token_hash: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     reset_password_expira_en: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     creado_en: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -224,6 +230,7 @@ class Proveedor(Base):
     
     evaluaciones: Mapped[list["EvaluacionProveedor"]] = relationship(back_populates="proveedor", cascade="all, delete-orphan")
     presupuestos_asociados: Mapped[list["PresupuestoProveedor"]] = relationship(back_populates="proveedor", cascade="all, delete-orphan")
+    pedidos: Mapped[list["PedidoProveedor"]] = relationship(back_populates="proveedor_catalogo")
 
 
 class EvaluacionProveedor(Base):
@@ -255,6 +262,7 @@ class PresupuestoProveedor(Base):
         Index("ix_pp_presupuesto_id", "presupuesto_id"),
         Index("ix_pp_proveedor_id", "proveedor_id"),
         CheckConstraint("estado IN ('contactado','cotizacion_recibida','descartado')", name="ck_pp_estado_valid"),
+        CheckConstraint("importe_cotizado IS NULL OR importe_cotizado >= 0", name="ck_pp_importe_cotizado_no_negativo"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
@@ -267,5 +275,5 @@ class PresupuestoProveedor(Base):
     creado_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     actualizado_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
-    presupuesto: Mapped[Presupuesto] = relationship(back_populates="presupuestos_asociados")
+    presupuesto: Mapped[Presupuesto] = relationship(back_populates="proveedores_asociados")
     proveedor: Mapped[Proveedor] = relationship(back_populates="presupuestos_asociados")

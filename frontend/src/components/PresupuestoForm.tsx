@@ -2,6 +2,8 @@ import type { ReactNode } from 'react'
 import { Save, AlertCircle } from 'lucide-react'
 import { ESTADOS, isoDate, type Presupuesto } from '../utils/api'
 import { useFormValidation } from '../utils/useFormValidation'
+import { useMetadataOptions } from '../utils/useMetadataOptions'
+import { OptionInput } from './OptionInput'
 
 type FormValue = Partial<Presupuesto> & { modificado_por?: string }
 
@@ -37,6 +39,7 @@ export function PresupuestoForm({ value, onChange, onSubmit, submitLabel = 'Guar
   submitLabel?: string
 }) {
   const { errors, validateField, validateAll } = useFormValidation(RULES)
+  const metadataOptions = useMetadataOptions()
 
   const handleSubmit = () => {
     const isValid = validateAll(value)
@@ -58,7 +61,7 @@ export function PresupuestoForm({ value, onChange, onSubmit, submitLabel = 'Guar
           <Field label="Nº presupuesto FactuSOL *" required error={errors.numero_presupuesto}><input className="input" value={value.numero_presupuesto || ''} onChange={e => set('numero_presupuesto', e.target.value)} onBlur={e => validateField('numero_presupuesto', e.target.value)} /></Field>
           <Field label="Cliente *" required error={errors.cliente}><input className="input" value={value.cliente || ''} onChange={e => set('cliente', e.target.value)} onBlur={e => validateField('cliente', e.target.value)} /></Field>
           <Field label="Obra / referencia *" required error={errors.obra_referencia}><input className="input" value={value.obra_referencia || ''} onChange={e => set('obra_referencia', e.target.value)} onBlur={e => validateField('obra_referencia', e.target.value)} /></Field>
-          <Field label="Gestor *" required error={errors.gestor}><input className="input" value={value.gestor || ''} onChange={e => set('gestor', e.target.value)} onBlur={e => validateField('gestor', e.target.value)} /></Field>
+          <Field label="Gestor *" required error={errors.gestor}><OptionInput className="input" options={metadataOptions.gestores} value={value.gestor || ''} onChange={e => set('gestor', e.target.value)} onBlur={e => validateField('gestor', e.target.value)} /></Field>
           <Field label="Importe *" required error={errors.importe}><input className="input" type="number" step="0.01" value={value.importe ?? ''} onChange={e => set('importe', Number(e.target.value))} onBlur={e => validateField('importe', Number(e.target.value))} /></Field>
           <Field label="Fecha presupuesto *" required error={errors.fecha_presupuesto}><input className="input" type="date" value={isoDate(value.fecha_presupuesto)} onChange={e => set('fecha_presupuesto', e.target.value)} onBlur={e => validateField('fecha_presupuesto', e.target.value)} /></Field>
         </div>
@@ -80,7 +83,7 @@ export function PresupuestoForm({ value, onChange, onSubmit, submitLabel = 'Guar
       <section className="card">
         <h3>C) Pedido proveedor</h3>
         <div className="form-grid">
-          <Field label="Proveedor" error={errors.proveedor}><input className="input" value={value.proveedor || ''} onChange={e => set('proveedor', e.target.value)} onBlur={e => validateField('proveedor', e.target.value)} /></Field>
+          <Field label="Proveedor" error={errors.proveedor}><OptionInput className="input" options={metadataOptions.proveedores} value={value.proveedor || ''} onChange={e => set('proveedor', e.target.value)} onBlur={e => validateField('proveedor', e.target.value)} /></Field>
           <Field label="Pedido proveedor realizado"><select className="select" value={value.pedido_proveedor_realizado ? 'true' : 'false'} onChange={e => set('pedido_proveedor_realizado', e.target.value === 'true')}><option value="false">No</option><option value="true">Sí</option></select></Field>
           <Field label="Nº pedido proveedor"><input className="input" value={value.numero_pedido_proveedor || ''} onChange={e => set('numero_pedido_proveedor', e.target.value)} /></Field>
           <Field label="Fecha pedido proveedor"><input className="input" type="date" value={isoDate(value.fecha_pedido_proveedor)} onChange={e => set('fecha_pedido_proveedor', e.target.value || null)} /></Field>

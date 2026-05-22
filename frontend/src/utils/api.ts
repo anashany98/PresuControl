@@ -1,6 +1,23 @@
 export const API_URL = import.meta.env.VITE_API_URL || '/api'
+export const AUTH_TOKEN_KEY = 'presucontrol_token'
+
+export function getAuthToken() {
+  return sessionStorage.getItem(AUTH_TOKEN_KEY)
+}
+
+export function storeAuthToken(token: string) {
+  sessionStorage.setItem(AUTH_TOKEN_KEY, token)
+  localStorage.removeItem(AUTH_TOKEN_KEY)
+}
+
+export function clearAuthToken() {
+  sessionStorage.removeItem(AUTH_TOKEN_KEY)
+  localStorage.removeItem(AUTH_TOKEN_KEY)
+  localStorage.removeItem('presucontrol_user')
+}
 
 export const ESTADOS = [
+  'Borrador',
   'Pendiente de enviar',
   'Enviado al cliente',
   'Aceptado - pendiente pedido proveedor',
@@ -50,6 +67,7 @@ export type Presupuesto = {
   actualizado_en: string
   version: number
   pedidos?: PedidoProveedor[]
+  proveedores_asociados?: PresupuestoProveedor[]
 }
 
 
@@ -69,6 +87,7 @@ export type UserAdmin = {
   activo: boolean
   aprobado: boolean
   puede_gestionar_sistema: boolean
+  rol: 'admin_sistema' | 'gestion'
   aprobado_en?: string | null
   aprobado_por?: string | null
   creado_en: string
@@ -130,8 +149,13 @@ export type Settings = {
   smtp_tls: boolean
 }
 
+export type MetadataOptions = {
+  gestores: string[]
+  proveedores: string[]
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const token = localStorage.getItem('presucontrol_token')
+  const token = getAuthToken()
   const headers: Record<string, string> = options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }
   if (token) headers.Authorization = `Bearer ${token}`
   const res = await fetch(`${API_URL}${path}`, {
@@ -141,8 +165,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   if (!res.ok) {
     const isAuthPublicPath = path === '/auth/me' || path.startsWith('/auth/login') || path.startsWith('/auth/register') || path.startsWith('/auth/password/')
     if (res.status === 401 && !isAuthPublicPath) {
-      localStorage.removeItem('presucontrol_token')
-      localStorage.removeItem('presucontrol_user')
+      clearAuthToken()
       window.location.href = '/login'
     }
     let message = `Error ${res.status}`
@@ -164,6 +187,8 @@ export const api = {
   patch<T>(path: string, body: unknown) { return request<T>(path, { method: 'PATCH', body: JSON.stringify(body) }) },
   put<T>(path: string, body: unknown) { return request<T>(path, { method: 'PUT', body: JSON.stringify(body) }) },
   delete<T>(path: string) { return request<T>(path, { method: 'DELETE' }) },
+
+  getMetadataOptions() { return request<MetadataOptions>('/metadata/options') },
 
   getPedidos(presupuestoId: number) {
     return request<PedidoProveedor[]>(`/presupuestos/${presupuestoId}/pedidos`)
@@ -240,7 +265,9 @@ export type EstadoEntrega = typeof ESTADO_ENTREGA_OPTIONS[number]
 export type PedidoProveedor = {
   id: number
   presupuesto_id: number
+  proveedor_id?: number | null
   proveedor: string
+  proveedor_nombre_snapshot?: string | null
   numero_pedido?: string | null
   fecha_pedido?: string | null
   importe?: number | null
@@ -254,7 +281,9 @@ export type PedidoProveedor = {
 
 export type PedidoProveedorCreate = {
   presupuesto_id: number
+  proveedor_id?: number | null
   proveedor: string
+  proveedor_nombre_snapshot?: string | null
   numero_pedido?: string | null
   fecha_pedido?: string | null
   importe?: number | null

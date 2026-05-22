@@ -14,6 +14,7 @@ export function Avisos() {
   const { data: historyData } = useData<AlertHistory[]>(() => api.get('/avisos/historial'), [])
   const [tab, setTab] = useState<'activos' | 'historial'>('activos')
   const [msg, setMsg] = useState<string | null>(null)
+  const [confirmSend, setConfirmSend] = useState(false)
   const [showConfig, setShowConfig] = useState(false)
   async function sendDigest() {
     setMsg(null)

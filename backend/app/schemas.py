@@ -1,8 +1,9 @@
 from datetime import date, datetime
-from pydantic import BaseModel, Field, ConfigDict
-from typing import Any
+from pydantic import BaseModel, Field, ConfigDict, field_validator
+from typing import Any, Literal
 
 ESTADOS = [
+    "Borrador",
     "Pendiente de enviar",
     "Enviado al cliente",
     "Aceptado - pendiente pedido proveedor",
@@ -16,6 +17,12 @@ ESTADOS = [
 ESTADO_ENTREGA_OPTIONS = ["pendiente", "parcial", "completado"]
 PRIORIDADES = ["Verde", "Amarillo", "Naranja", "Rojo", "Crítico"]
 
+
+def _validate_choice(value: str | None, choices: list[str], field_name: str) -> str | None:
+    if value is not None and value not in choices:
+        raise ValueError(f"{field_name} debe ser uno de: {', '.join(choices)}")
+    return value
+
 class PresupuestoBase(BaseModel):
     numero_presupuesto: str | None = None
     cliente: str | None = None
@@ -24,7 +31,7 @@ class PresupuestoBase(BaseModel):
     fecha_presupuesto: date | None = None
     fecha_envio_cliente: date | None = None
     fecha_aceptacion: date | None = None
-    importe: float | None = None
+    importe: float | None = Field(default=None, ge=0)
     estado: str | None = None
     proveedor: str | None = None
     pedido_proveedor_realizado: bool | None = None
@@ -43,13 +50,19 @@ class PresupuestoBase(BaseModel):
     archivado: bool | None = None
     motivo_archivado: str | None = None
 
+    @field_validator("estado")
+    @classmethod
+    def validate_estado(cls, value: str | None) -> str | None:
+        return _validate_choice(value, ESTADOS, "estado")
+
+
 class PresupuestoCreate(PresupuestoBase):
     numero_presupuesto: str = Field(..., min_length=1)
     cliente: str = Field(..., min_length=1)
     obra_referencia: str = Field(..., min_length=1)
     gestor: str = Field(..., min_length=1)
     fecha_presupuesto: date
-    importe: float
+    importe: float = Field(..., ge=0)
     estado: str = Field(..., min_length=1)
     modificado_por: str | None = None
 
@@ -79,35 +92,49 @@ class PresupuestoOut(PresupuestoBase):
     archivado_en: datetime | None = None
     archivado_por: str | None = None
     motivo_archivado: str | None = None
-    pedidos: list["PedidoProveedorOut"] = []
-    proveedores_asociados: list["PresupuestoProveedorOut"] = []
+    pedidos: list["PedidoProveedorOut"] = Field(default_factory=list)
+    proveedores_asociados: list["PresupuestoProveedorOut"] = Field(default_factory=list)
 
 
 class PedidoProveedorBase(BaseModel):
+    proveedor_id: int | None = Field(default=None, gt=0)
     proveedor: str | None = None
+    proveedor_nombre_snapshot: str | None = None
     numero_pedido: str | None = None
     fecha_pedido: date | None = None
-    importe: float | None = None
+    importe: float | None = Field(default=None, ge=0)
     estado_entrega: str | None = None
     fecha_entrega_prevista: date | None = None
     fecha_entrega_real: date | None = None
     observaciones: str | None = None
+
+    @field_validator("estado_entrega")
+    @classmethod
+    def validate_estado_entrega(cls, value: str | None) -> str | None:
+        return _validate_choice(value, ESTADO_ENTREGA_OPTIONS, "estado_entrega")
 
 
 class PedidoProveedorCreate(PedidoProveedorBase):
     presupuesto_id: int | None = None
-    proveedor: str = Field(..., min_length=1)
+    proveedor: str | None = None
 
 
 class PedidoProveedorUpdate(BaseModel):
+    proveedor_id: int | None = Field(default=None, gt=0)
     proveedor: str | None = None
+    proveedor_nombre_snapshot: str | None = None
     numero_pedido: str | None = None
     fecha_pedido: date | None = None
-    importe: float | None = None
+    importe: float | None = Field(default=None, ge=0)
     estado_entrega: str | None = None
     fecha_entrega_prevista: date | None = None
     fecha_entrega_real: date | None = None
     observaciones: str | None = None
+
+    @field_validator("estado_entrega")
+    @classmethod
+    def validate_estado_entrega(cls, value: str | None) -> str | None:
+        return _validate_choice(value, ESTADO_ENTREGA_OPTIONS, "estado_entrega")
 
 
 class PedidoProveedorOut(PedidoProveedorBase):
@@ -152,24 +179,39 @@ PROVEEDOR_ESTADO_OPCIONES = ["contactado", "cotizacion_recibida", "descartado"]
 class PresupuestoProveedorBase(BaseModel):
     proveedor_id: int | None = None
     estado: str | None = None
-    importe_cotizado: float | None = None
+    importe_cotizado: float | None = Field(default=None, ge=0)
     fecha_cotizacion: date | None = None
     notas: str | None = None
+
+    @field_validator("estado")
+    @classmethod
+    def validate_estado(cls, value: str | None) -> str | None:
+        return _validate_choice(value, PROVEEDOR_ESTADO_OPCIONES, "estado")
 
 
 class PresupuestoProveedorCreate(BaseModel):
-    proveedor_id: int = Field(..., min_length=1)
+    proveedor_id: int = Field(..., gt=0)
     estado: str | None = "contactado"
-    importe_cotizado: float | None = None
+    importe_cotizado: float | None = Field(default=None, ge=0)
     fecha_cotizacion: date | None = None
     notas: str | None = None
+
+    @field_validator("estado")
+    @classmethod
+    def validate_estado(cls, value: str | None) -> str | None:
+        return _validate_choice(value, PROVEEDOR_ESTADO_OPCIONES, "estado")
 
 
 class PresupuestoProveedorUpdate(BaseModel):
     estado: str | None = None
-    importe_cotizado: float | None = None
+    importe_cotizado: float | None = Field(default=None, ge=0)
     fecha_cotizacion: date | None = None
     notas: str | None = None
+
+    @field_validator("estado")
+    @classmethod
+    def validate_estado(cls, value: str | None) -> str | None:
+        return _validate_choice(value, PROVEEDOR_ESTADO_OPCIONES, "estado")
 
 
 class PresupuestoProveedorOut(PresupuestoProveedorBase):
@@ -184,7 +226,7 @@ class PresupuestoProveedorOut(PresupuestoProveedorBase):
 
 
 class ProveedorConPresupuestos(ProveedorOut):
-    presupuestos_asociados: list[PresupuestoProveedorOut] = []
+    presupuestos_asociados: list[PresupuestoProveedorOut] = Field(default_factory=list)
 
 
 class EvaluacionProveedorBase(BaseModel):
@@ -301,13 +343,13 @@ class ImportPreview(BaseModel):
     modo: str = 'create_only'
     nuevos: int = 0
     actualizables: int = 0
-    cambios_preview: list[dict[str, Any]] = []
+    cambios_preview: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class UserRegister(BaseModel):
     nombre: str = Field(..., min_length=2)
     email: str = Field(..., min_length=5)
-    password: str = Field(..., min_length=6)
+    password: str = Field(..., min_length=12)
 
 
 class UserLogin(BaseModel):
@@ -326,6 +368,7 @@ class UserOut(BaseModel):
     aprobado_por: str | None = None
     creado_en: datetime
     puede_gestionar_sistema: bool = False
+    rol: Literal["admin_sistema", "gestion"] = "gestion"
 
 
 class TokenOut(BaseModel):
@@ -361,6 +404,7 @@ class ArchivePayload(BaseModel):
 class UserApprovalPayload(BaseModel):
     aprobado: bool = True
     puede_gestionar_sistema: bool | None = None
+    rol: Literal["admin_sistema", "gestion"] | None = None
 
 
 class EmailLogOut(BaseModel):
@@ -395,11 +439,11 @@ class PasswordResetRequest(BaseModel):
 
 class PasswordResetConfirm(BaseModel):
     token: str = Field(..., min_length=20)
-    password: str = Field(..., min_length=6)
+    password: str = Field(..., min_length=12)
 
 
 class PasswordAdminReset(BaseModel):
-    password: str = Field(..., min_length=6)
+    password: str = Field(..., min_length=12)
 
 
 class SidebarCounters(BaseModel):
@@ -409,6 +453,8 @@ class SidebarCounters(BaseModel):
     incidencias: int
     usuarios_pendientes: int
     dinero_riesgo: float
+    notificaciones_sin_leer: int
+    pedidos_pendientes: int
 
 
 class SearchResult(BaseModel):

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+﻿import { useState, useMemo } from 'react'
 import { PageHeader } from '../components/PageHeader'
 import { api, fmtDate, euro, type Presupuesto } from '../utils/api'
 import { useData } from '../utils/useData'
@@ -187,7 +187,7 @@ export function Calendario() {
                           onClick={() => setSelectedDay(d)}
                         >
                           {evs.length === 0 ? (
-                            <span className="cal-no-events">—</span>
+                            <span className="cal-no-events">â€”</span>
                           ) : (
 evs.map((e, i) => (
                                 <button
@@ -292,11 +292,11 @@ evs.map((e, i) => (
                       <div className="cal-panel-client">{e.p.cliente}</div>
                       <div className="cal-panel-meta">
                         <span>{e.p.estado}</span>
-                        <span className="cal-panel-sep">·</span>
+                        <span className="cal-panel-sep">Â·</span>
                         <span>{fmtDate(e.date)}</span>
-                        <span className="cal-panel-sep">·</span>
-                        <span>{e.p.importe}€</span>
-                        <span className="cal-panel-sep">·</span>
+                        <span className="cal-panel-sep">Â·</span>
+                        <span>{e.p.importe}â‚¬</span>
+                        <span className="cal-panel-sep">Â·</span>
                         <span>{e.p.gestor}</span>
                       </div>
                       <div className="cal-panel-arrow">
@@ -315,7 +315,7 @@ evs.map((e, i) => (
       )}
       <style>{`
         .cal-wrapper {
-          max-width: 1400px;
+          max-width: 1800px;
         }
         .cal-toolbar {
           display: flex;
@@ -957,7 +957,7 @@ function InfoRow({ icon: Icon, label, value, badge }: { icon: typeof Clock; labe
         {label}
       </span>
       <span className="cal-modal-value">
-        {badge || value || <span className="cal-modal-empty">—</span>}
+        {badge || value || <span className="cal-modal-empty">â€”</span>}
       </span>
     </div>
   )
@@ -1020,7 +1020,7 @@ function PresupuestoModal({ presupuesto, onClose }: { presupuesto: Presupuesto; 
               label="Pedido realizado"
               value={presupuesto.pedido_proveedor_realizado ? 'Sí' : 'No'}
             />
-            <InfoRow icon={Package} label="Nº pedido proveedor" value={presupuesto.numero_pedido_proveedor} />
+            <InfoRow icon={Package} label="NÂº pedido proveedor" value={presupuesto.numero_pedido_proveedor} />
           </div>
 
           {presupuesto.incidencia && presupuesto.descripcion_incidencia && (

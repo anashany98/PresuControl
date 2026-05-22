@@ -2,17 +2,16 @@ from __future__ import annotations
 
 import os
 import re
+import hashlib
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import HTTPException, Request
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from sqlalchemy.orm import Session
+import bcrypt
 
 from .models import Usuario
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 if not SECRET_KEY:
@@ -32,11 +31,15 @@ def normalize_email(email: str) -> str:
 
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
 def verify_password(password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(password, hashed_password)
+    return bcrypt.checkpw(password.encode("utf-8"), hashed_password.encode("utf-8"))
+
+
+def hash_reset_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 def create_access_token(subject: str, extra: dict[str, Any] | None = None) -> str:
@@ -65,7 +68,6 @@ def get_authenticated_user_from_request(request: Request, db: Session) -> Usuari
     raw_token = None
     if auth.startswith("Bearer "):
         raw_token = auth.removeprefix("Bearer ").strip()
-    # Token in URL query param is disabled for security (logged, cached, leaked via Referer)
     if not raw_token:
         raise HTTPException(status_code=401, detail="No autenticado: falta token de acceso.")
     try:

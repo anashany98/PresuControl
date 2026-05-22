@@ -1,7 +1,12 @@
 import { createContext, type ReactNode, useContext, useEffect, useMemo, useState } from 'react'
-import { api } from './api'
+import { AUTH_TOKEN_KEY, api, clearAuthToken, storeAuthToken } from './api'
 
-export type User = { id: number; nombre: string; email: string; activo: boolean; aprobado: boolean; puede_gestionar_sistema: boolean; creado_en: string }
+export type UserRole = 'admin_sistema' | 'gestion'
+export type User = { id: number; nombre: string; email: string; activo: boolean; aprobado: boolean; puede_gestionar_sistema: boolean; rol: UserRole; creado_en: string }
+
+export function isSystemAdmin(user: User | null | undefined) {
+  return Boolean(user && (user.rol === 'admin_sistema' || user.puede_gestionar_sistema))
+}
 type AuthContextValue = {
   user: User | null
   token: string | null
@@ -14,7 +19,7 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [token, setToken] = useState<string | null>(() => sessionStorage.getItem('presucontrol_token'))
+  const [token, setToken] = useState<string | null>(() => sessionStorage.getItem(AUTH_TOKEN_KEY))
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(Boolean(token))
 
@@ -28,7 +33,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(me)
       } catch {
         if (!alive) return
-        sessionStorage.removeItem('presucontrol_token')
+        clearAuthToken()
         setToken(null); setUser(null)
       } finally { if (alive) setLoading(false) }
     }
@@ -38,19 +43,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function login(email: string, password: string) {
     const res = await api.post<{ access_token: string; user: User }>('/auth/login', { email, password })
-    sessionStorage.setItem('presucontrol_token', res.access_token)
+    storeAuthToken(res.access_token)
     setToken(res.access_token); setUser(res.user)
   }
 
   async function register(nombre: string, email: string, password: string) {
     const res = await api.post<{ access_token?: string; user?: User; detail?: string }>('/auth/register', { nombre, email, password })
     if (!res.access_token || !res.user) throw new Error(res.detail || 'Registro enviado. La cuenta queda pendiente de aceptación.')
-    sessionStorage.setItem('presucontrol_token', res.access_token)
+    storeAuthToken(res.access_token)
     setToken(res.access_token); setUser(res.user)
   }
 
   function logout() {
-    sessionStorage.removeItem('presucontrol_token')
+    clearAuthToken()
     setToken(null); setUser(null)
   }
 

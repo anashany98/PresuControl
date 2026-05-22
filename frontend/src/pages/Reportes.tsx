@@ -3,9 +3,11 @@ import { Link } from 'react-router-dom'
 import { AlertTriangle, Download, FileSpreadsheet, Package, ShieldAlert, XCircle, Clock, CheckCircle2 } from 'lucide-react'
 import { PageHeader } from '../components/PageHeader'
 import { StateBadge } from '../components/Badges'
-import { API_URL, api, euro, fmtDate, type Presupuesto } from '../utils/api'
-import { useAuth } from '../utils/auth'
+import { OptionInput } from '../components/OptionInput'
+import { API_URL, api, euro, fmtDate, getAuthToken, type Presupuesto } from '../utils/api'
+import { isSystemAdmin, useAuth } from '../utils/auth'
 import { useData } from '../utils/useData'
+import { useMetadataOptions } from '../utils/useMetadataOptions'
 import { PedidoSummaryBadge } from '../components/PedidoSummary'
 import { useToast } from '../utils/toast'
 
@@ -23,7 +25,7 @@ const TABS: { key: ReportKey; label: string; icon: typeof FileSpreadsheet }[] = 
 
 async function downloadExcel(data: Presupuesto[], filename: string) {
   if (!data.length) return
-  const token = localStorage.getItem('presucontrol_token')
+  const token = getAuthToken()
   const res = await fetch(`${API_URL}/reports/export-list`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -42,6 +44,7 @@ async function downloadExcel(data: Presupuesto[], filename: string) {
 export function Reportes() {
   const { user } = useAuth()
   const toast = useToast()
+  const metadataOptions = useMetadataOptions()
   const [activeTab, setActiveTab] = useState<ReportKey>('atrasados')
   const [gestor, setGestor] = useState('')
   const [dateFrom, setDateFrom] = useState('')
@@ -125,11 +128,12 @@ export function Reportes() {
             onChange={e => setDateTo(e.target.value)}
             placeholder="Hasta fecha límite"
           />
-          {user?.puede_gestionar_sistema && (
-            <input
+          {isSystemAdmin(user) && (
+            <OptionInput
               type="text"
               className="input"
               style={{ maxWidth: 170 }}
+              options={metadataOptions.gestores}
               value={gestor}
               onChange={e => setGestor(e.target.value)}
               placeholder="Gestor"
@@ -159,8 +163,8 @@ export function Reportes() {
       {loading ? (
         <div className="card">Cargando...</div>
       ) : (
-        <div className="table-wrap">
-          <table>
+        <div className="table-wrap" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+          <table className="reportes-table">
             <thead>
               <tr>
                 <th>Nº Presupuesto</th>

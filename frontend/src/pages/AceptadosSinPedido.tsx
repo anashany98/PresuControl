@@ -1,7 +1,9 @@
 import { Link } from 'react-router-dom'
-import { ShieldAlert } from 'lucide-react'
+import { Package, ShieldAlert } from 'lucide-react'
 import { PageHeader } from '../components/PageHeader'
 import { PresupuestosTable } from './Presupuestos'
+import { SkeletonTable } from '../components/Skeleton'
+import { EmptyState } from '../components/EmptyState'
 import { api, euro, type Presupuesto } from '../utils/api'
 import { useData } from '../utils/useData'
 
@@ -15,6 +17,6 @@ export function AceptadosSinPedido() {
       <div className="card stat"><div><div className="value">{euro(total)}</div><div className="label">Importe aceptado pendiente de pedido</div></div><div className="icon"><ShieldAlert size={18}/></div></div>
     </div>
     {error && <div className="error">{error}</div>}
-    {loading ? <div className="card">Cargando...</div> : <PresupuestosTable rows={data || []} />}
+    {loading ? <SkeletonTable rows={6} /> : (data && data.length === 0 ? <EmptyState icon={Package} title="Sin presupuestos aceptados sin pedido" description="Todos los presupuestos aceptados ya tienen pedido al proveedor. Sigue avanzando desde el Kanban." actions={[{ label: 'Ir al Kanban', to: '/kanban' }, { label: 'Ver todos', to: '/presupuestos' }]} /> : <PresupuestosTable rows={data || []} />)}
   </>
 }
