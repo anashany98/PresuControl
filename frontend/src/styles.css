@@ -174,9 +174,10 @@ button, input, select, textarea { font: inherit; }
 /* ── MAIN CONTENT ── */
 .main-content { flex: 1; min-width: 0; }
 
-/* ── TOPBAR (mobile-first, always visible on small screens) ── */
+/* ── TOPBAR (mobile-only, hidden on desktop) ── */
 .topbar {
-  display: flex; justify-content: space-between; align-items: center;
+  display: none;
+  justify-content: space-between; align-items: center;
   padding: 8px 16px;
   background: var(--panel-strong);
   border-bottom: 1px solid var(--border);
@@ -769,6 +770,7 @@ tr:hover td { background: #fbfdff; }
 /* Tablet: collapse sidebar, show topbar */
 @media (max-width: 1024px) {
   .sidebar { display: none; }
+  .topbar { display: flex; }
   .main-content { padding-bottom: 80px; }
   .grid.cards { grid-template-columns: repeat(2, minmax(0,1fr)); }
   .sections { grid-template-columns: 1fr; }
