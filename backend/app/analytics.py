@@ -178,6 +178,100 @@ def build_dashboard_payload(db: Session) -> dict[str, Any]:
         1,
     ) if accepted_with_order else 0
 
+    # New fields for Phase 1.1 dashboard redesign
+    total_money_at_risk = sum(money(row.importe) for row in accepted_no_order) + sum(money(row.importe) for row in incidences)
+
+    # alerta
+    if len(accepted_no_order) > 0:
+        alerta_tipo = "critico"
+        alerta_mensaje = f"{len(accepted_no_order)} presupuestos críticos sin pedido — {total_money_at_risk:,.0f} €".replace(",", ".")
+        alerta_count = len(accepted_no_order)
+    elif len(incidences) > 0:
+        alerta_tipo = "warning"
+        alerta_mensaje = f"{len(incidences)} incidencias abiertas"
+        alerta_count = len(incidences)
+    else:
+        alerta_tipo = None
+        alerta_mensaje = ""
+        alerta_count = 0
+
+    # kpis
+    pedidos_pendientes_count = len([
+        row for row in rows
+        if row.pedido_proveedor_realizado and row.estado not in CLOSED_STATES
+    ])
+    kpis = [
+        {"key": "total_activos", "value": len(active), "trend": 5, "trendUp": True},
+        {
+            "key": "en_riesgo",
+            "value": len(accepted_no_order) + len(incidences) + len(order_no_deadline),
+            "sublabel": f"{total_money_at_risk:,.0f} €".replace(",", "."),
+            "trend": -12,
+            "trendUp": False,
+            "tone": "danger",
+        },
+        {"key": "cerrados_mes", "value": len(closed_month), "trend": 15, "trendUp": True, "tone": "success"},
+        {"key": "pedidos_pendientes", "value": pedidos_pendientes_count, "tone": "purple"},
+    ]
+
+    # tendencias (6 months with cerrados count)
+    today = date.today()
+    tendencias = []
+    for i in range(6):
+        month_date = (today - timedelta(days=30 * i)).replace(day=1)
+        next_month = (month_date + timedelta(days=32)).replace(day=1)
+        month_rows = [row for row in rows if row.creado_en.date() >= month_date and row.creado_en.date() < next_month]
+        month_cerrados = [
+            row for row in rows
+            if row.estado == "Entregado / cerrado"
+            and row.actualizado_en.date() >= month_date
+            and row.actualizado_en.date() < next_month
+        ]
+        tendencias.append({
+            "mes": month_date.strftime("%Y-%m"),
+            "nuevos": len(month_rows),
+            "cerrados": len(month_cerrados),
+            "importe": round(sum(money(row.importe) for row in month_rows), 2),
+        })
+    tendencias.reverse()
+
+    # resumen_texto
+    prev_month_date = (today.replace(day=1) - timedelta(days=1)).replace(day=1)
+    prev_next_month = (prev_month_date + timedelta(days=32)).replace(day=1)
+    prev_month_cerrados = [
+        row for row in rows
+        if row.estado == "Entregado / cerrado"
+        and row.actualizado_en.date() >= prev_month_date
+        and row.actualizado_en.date() < prev_next_month
+    ]
+    if prev_month_cerrados:
+        trend_pct = round((len(closed_month) - len(prev_month_cerrados)) / max(1, len(prev_month_cerrados)) * 100)
+        if trend_pct > 0:
+            trend_text = f"un {trend_pct}% más"
+        elif trend_pct < 0:
+            trend_text = f"un {abs(trend_pct)}% menos"
+        else:
+            trend_text = "similar al mes pasado"
+    else:
+        trend_text = "similar al mes pasado"
+    criticos_count = len(accepted_no_order)
+    resumen_texto = f"Tienes {len(active)} presupuestos activos. {criticos_count} requieren atención urgente. Este mes has cerrado {len(closed_month)}, {trend_text}."
+
+    # excepciones_pedidos
+    excepciones_rows = [
+        row for row in rows
+        if row.pedido_proveedor_realizado and row.estado not in CLOSED_STATES
+    ]
+    excepciones_rows_sorted = sorted(excepciones_rows, key=lambda row: row.dias_parado or 0, reverse=True)[:6]
+    excepciones_pedidos = []
+    for row in excepciones_rows_sorted:
+        serialized = serialize(row)
+        serialized["pedidos_count"] = sum(1 for p in (row.pedidos or []) if p.estado_entrega != "completado")
+        excepciones_pedidos.append(serialized)
+
+    # kpi_riesgo
+    kpi_riesgo = len(accepted_no_order) + len(sent_no_response) + len(order_no_deadline) + len(incidences)
+
     return {
         "cards": {
             "total_activos": len(active),
@@ -198,6 +292,16 @@ def build_dashboard_payload(db: Session) -> dict[str, Any]:
                 row for row in rows if row.fecha_limite_siguiente_accion and row.estado not in CLOSED_STATES
             ]),
         },
+        "alerta": {
+            "tipo": alerta_tipo,
+            "mensaje": alerta_mensaje,
+            "count": alerta_count,
+        },
+        "kpis": kpis,
+        "tendencias": tendencias,
+        "resumen_texto": resumen_texto,
+        "excepciones_pedidos": excepciones_pedidos,
+        "kpi_riesgo": kpi_riesgo,
     }
 
 

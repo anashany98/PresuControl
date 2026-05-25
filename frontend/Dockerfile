@@ -1,7 +1,7 @@
 FROM node:22-slim AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm install -g npm@11.14.1 && npm ci
+RUN npm install -g npm@11.14.1 && npm install
 COPY . .
 ARG VITE_API_URL=/api
 ENV VITE_API_URL=$VITE_API_URL

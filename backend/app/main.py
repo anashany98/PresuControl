@@ -17,7 +17,7 @@ import pandas as pd
 from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
-from sqlalchemy import func, or_, desc, asc, text
+from sqlalchemy import func, or_, desc, asc, text, case
 from sqlalchemy.orm import Session, selectinload
 
 from .database import Base, engine, get_db, SessionLocal
@@ -46,6 +46,7 @@ from .schemas import (
     SettingsOut,
     SettingsUpdate,
     UserRegister,
+    UserAdminCreate,
     UserLogin,
     TokenOut,
     UserOut,
@@ -65,6 +66,7 @@ from .config import get_fastapi_docs_config, get_public_paths, validate_runtime_
 from .auth import create_access_token, get_authenticated_user_from_request, hash_password, hash_reset_token, is_auth_enabled, normalize_email, verify_password
 from .access_control import ADMIN_ROLE, GESTION_ROLE, require_gestion_or_admin, require_system_manager, sync_legacy_system_flag, user_role
 from .analytics import (
+    active_rows_with_risk,
     build_dashboard_payload,
     build_executive_dashboard_payload,
     build_reports_payload,
@@ -464,6 +466,30 @@ def list_usuarios(request: Request, db: Session = Depends(get_db)):
     return db.query(Usuario).order_by(desc(Usuario.creado_en)).all()
 
 
+@app.post("/usuarios", response_model=UserOut)
+def create_usuario(payload: UserAdminCreate, request: Request, db: Session = Depends(get_db)):
+    require_system_manager(request)
+    existing = db.query(Usuario).filter(Usuario.email == payload.email).first()
+    if existing:
+        raise HTTPException(status_code=422, detail="Ya existe un usuario con ese email.")
+    actor = current_actor(request)
+    user = Usuario(
+        nombre=payload.nombre,
+        email=payload.email,
+        hashed_password=hash_password(payload.password),
+        activo=True,
+        aprobado=True,
+        aprobado_en=datetime.now(timezone.utc),
+        aprobado_por=actor_label(actor),
+        puede_gestionar_sistema=payload.rol == ADMIN_ROLE,
+        rol=payload.rol,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
 @app.get("/usuarios/pendientes", response_model=list[UserOut])
 def list_usuarios_pendientes(request: Request, db: Session = Depends(get_db)):
     require_system_manager(request)
@@ -535,6 +561,26 @@ def admin_reset_password(usuario_id: int, payload: PasswordAdminReset, request: 
     db.commit()
     db.refresh(user)
     return user
+
+
+@app.get("/usuarios/me/preferencias")
+def get_my_preferencias(request: Request, db: Session = Depends(get_db)):
+    user = getattr(request.state, "user", None)
+    if not user:
+        raise HTTPException(status_code=401, detail="No autenticado.")
+    return user.preferencias or {}
+
+
+@app.patch("/usuarios/me/preferencias")
+def update_my_preferencias(payload: dict, request: Request, db: Session = Depends(get_db)):
+    user = getattr(request.state, "user", None)
+    if not user:
+        raise HTTPException(status_code=401, detail="No autenticado.")
+    current = user.preferencias or {}
+    current.update(payload)
+    user.preferencias = current
+    db.commit()
+    return current
 
 
 
@@ -746,10 +792,11 @@ def metadata_options(db: Session = Depends(get_db)):
     return build_metadata_options(db)
 
 
-@app.get("/presupuestos", response_model=list[PresupuestoOut])
+@app.get("/presupuestos")
 def list_presupuestos(
     request: Request,
     db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
     search: str | None = None,
     estado: str | None = None,
     prioridad: str | None = None,
@@ -761,16 +808,55 @@ def list_presupuestos(
     sort_by: str | None = "ultima_actualizacion",
     sort_dir: str | None = "desc",
     limit: int = Query(250, ge=1, le=2000),
+    sort: str | None = Query(None, regex="^(prioridad)$"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
 ):
     require_gestion_or_admin(request)
+    # Auto-filter by gestor for non-admin users (unless explicit gestor filter is set)
+    if user_role(user) != ADMIN_ROLE and not gestor:
+        gestor = user.nombre
     q = apply_filters(db.query(Presupuesto).options(selectinload(Presupuesto.pedidos)), search, estado, prioridad, gestor, proveedor, incidencia)
     if not include_archivados:
         q = q.filter(Presupuesto.archivado == False)  # noqa: E712
     if ocultar_cerrados:
         q = q.filter(Presupuesto.estado.notin_(list(CLOSED_STATES)))
-    q = apply_sort(q, sort_by, sort_dir)
+
+    # Apply priority sorting when requested
+    if sort == "prioridad":
+        prioridad_order = case(
+            (Presupuesto.prioridad_calculada == 'Crítico', 5),
+            (Presupuesto.prioridad_calculada == 'Rojo', 4),
+            (Presupuesto.prioridad_calculada == 'Naranja', 3),
+            (Presupuesto.prioridad_calculada == 'Amarillo', 2),
+            (Presupuesto.prioridad_calculada == 'Verde', 1),
+            else_=0
+        )
+        q = q.order_by(prioridad_order.desc(), Presupuesto.dias_parado.desc())
+    else:
+        q = apply_sort(q, sort_by, sort_dir)
+
+    # Determine if pagination is requested (any non-default pagination params)
+    is_paginated = page != 1 or page_size != 50
+
+    if is_paginated:
+        total = q.count()
+        importe_total = float(q.with_entities(func.coalesce(func.sum(Presupuesto.importe), 0)).order_by(None).scalar() or 0)
+        rows = q.offset((page - 1) * page_size).limit(page_size).all()
+        settings = get_settings(db)
+        pedido_counts = get_pedido_counts(db, [row.id for row in rows])
+        for row in rows:
+            row.prioridad_calculada, row.dias_parado = calculate_risk(row, db, settings, pedido_counts)
+        return {
+            "items": rows,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": max((total + page_size - 1) // page_size, 1),
+            "importe_total": round(importe_total, 2),
+        }
+
     rows = q.limit(limit).all()
-    # OPTIMIZACIÓN: Obtener settings UNA vez, no por cada fila
     settings = get_settings(db)
     pedido_counts = get_pedido_counts(db, [row.id for row in rows])
     for row in rows:
@@ -1256,7 +1342,7 @@ def mi_mesa(request: Request, db: Session = Depends(get_db), responsable: str | 
         "items": items,
         "resumen": {
             "total": len(items),
-            "vencidos": len([x for x in items if x.get("fecha_limite_siguiente_accion") and x["fecha_limite_siguiente_accion"][:10] <= today.isoformat()]),
+            "vencidos": len([x for x in items if x.get("fecha_limite_siguiente_accion") and str(x["fecha_limite_siguiente_accion"])[:10] <= today.isoformat()]),
             "criticos": len([x for x in items if x.get("prioridad_calculada") == "Crítico"]),
             "incidencias": len([x for x in items if x.get("incidencia")]),
             "aceptados_sin_pedido": len([x for x in items if x.get("fecha_aceptacion") and not x.get("pedido_proveedor_realizado")]),
@@ -1579,86 +1665,135 @@ def export_reports(request: Request, db: Session = Depends(get_db)):
     require_system_manager(request)
     payload = build_reports_payload(db)
     metrics = payload["metricas"]
+    now = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M")
+
+    # Get all presupuestos with risk data for detailed sheets
+    rows, _pedido_counts = active_rows_with_risk(db)
+    current_month = date.today().replace(day=1)
+
+    # Categorize presupuestos
+    sin_aceptar = [r for r in rows if r.estado == "Enviado al cliente"]
+    sin_pedido = [r for r in rows if r.fecha_aceptacion and not r.pedido_proveedor_realizado]
+    sin_plazo = [r for r in rows if r.pedido_proveedor_realizado and not r.plazo_proveedor and r.estado not in CLOSED_STATES]
+    en_fabricacion = [r for r in rows if r.estado == "En preparación / fabricación"]
+    cancelados = [r for r in rows if r.estado == "Cancelado / rechazado"]
+    bloqueados = [r for r in rows if r.incidencia or r.estado == "Bloqueado / incidencia"]
+    cerrados_mes = [r for r in rows if r.estado == "Entregado / cerrado" and r.actualizado_en and r.actualizado_en.date() >= current_month]
+    active = [r for r in rows if r.estado not in CLOSED_STATES]
+
+    COLUMNS = ["Nº Presupuesto", "Cliente", "Obra", "Gestor", "Importe", "Estado", "Prioridad", "Días Parado",
+               "Proveedor", "Nº Pedido", "Fecha Límite", "Siguiente Acción", "Incidencia"]
+
+    def budget_row(r: Presupuesto):
+        return [
+            r.numero_presupuesto, r.cliente, r.obra_referencia or "", r.gestor or "",
+            float(r.importe or 0), r.estado, r.prioridad_calculada or "", r.dias_parado or 0,
+            r.proveedor or "", r.numero_pedido_proveedor or "",
+            r.fecha_limite_siguiente_accion.strftime("%d/%m/%Y") if r.fecha_limite_siguiente_accion else "",
+            r.siguiente_accion or "", "Sí" if r.incidencia else "No"
+        ]
 
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
         workbook = writer.book
-        header_format = workbook.add_format({"bold": True, "bg_color": "#F3F4F6", "border": 1})
-        money_format = workbook.add_format({"num_format": "#,##0.00€"})
-        int_format = workbook.add_format({"num_format": "#,##0"})
+        header_format = workbook.add_format({"bold": True, "bg_color": "#1c1917", "font_color": "#ffffff", "border": 1, "text_wrap": True})
+        money_format = workbook.add_format({"num_format": "#,##0.00 €", "border": 1})
+        int_format = workbook.add_format({"num_format": "#,##0", "border": 1, "align": "center"})
+        cell_format = workbook.add_format({"border": 1, "text_wrap": True})
+        title_format = workbook.add_format({"bold": True, "font_size": 16, "font_color": "#1c1917"})
+        subtitle_format = workbook.add_format({"font_size": 10, "font_color": "#78716c", "italic": True})
+        chart_colors = ["#d47043", "#3b82f6", "#22c55e", "#ef4444", "#f97316", "#8b5cf6", "#eab308", "#06b6d4"]
 
-        ws_summary = writer.sheets.get("Resumen", None)
-        if ws_summary is None:
-            ws_summary = workbook.add_worksheet("Resumen")
+        # ── Resumen ──
+        ws = workbook.add_worksheet("Resumen")
+        ws.merge_range(0, 0, 0, 1, "PresuControl — Informe ejecutivo", title_format)
+        ws.merge_range(1, 0, 1, 1, f"Generado el {now}", subtitle_format)
+        ws.write(3, 0, "Indicador", header_format)
+        ws.write(3, 1, "Valor", header_format)
+        items = [
+            ("Total presupuestos activos", len(active), int_format),
+            ("Sin aceptar (enviados sin respuesta)", len(sin_aceptar), int_format),
+            ("Sin pedido (aceptados sin pedido proveedor)", len(sin_pedido), int_format),
+            ("Sin plazo (pedido sin plazo confirmado)", len(sin_plazo), int_format),
+            ("En fabricación", len(en_fabricacion), int_format),
+            ("Bloqueados / incidencias", len(bloqueados), int_format),
+            ("Cancelados / rechazados", len(cancelados), int_format),
+            ("Cerrados este mes", len(cerrados_mes), int_format),
+            ("", "", None),
+            ("Importe aceptado pendiente de pedido", metrics["importe_aceptado_pendiente_pedido"], money_format),
+            ("Días medios aceptación → pedido", metrics["dias_medios_aceptacion_a_pedido"], int_format),
+            ("Presupuestos bloqueados", metrics["bloqueados"], int_format),
+        ]
+        for i, (label, val, fmt) in enumerate(items):
+            ws.write(4 + i, 0, label, cell_format)
+            if fmt: ws.write(4 + i, 1, val, fmt)
+        ws.set_column(0, 0, 50)
+        ws.set_column(1, 1, 20)
+        ws.freeze_panes(4, 0)
 
-        ws_summary.write(0, 0, "Métrica", header_format)
-        ws_summary.write(0, 1, "Valor", header_format)
-        ws_summary.write(1, 0, "Importe aceptado pendiente pedido")
-        ws_summary.write(1, 1, metrics["importe_aceptado_pendiente_pedido"], money_format)
-        ws_summary.write(2, 0, "Días medios aceptación a pedido")
-        ws_summary.write(2, 1, metrics["dias_medios_aceptacion_a_pedido"], int_format)
-        ws_summary.write(3, 0, "Presupuestos bloqueados")
-        ws_summary.write(3, 1, metrics["bloqueados"], int_format)
-        ws_summary.set_column(0, 0, 40)
-        ws_summary.set_column(1, 1, 20)
+        # Helper for detail sheets
+        def write_detail_sheet(sheet_name, data_list, chart_title=None):
+            ws_sheet = workbook.add_worksheet(sheet_name)
+            ws_sheet.merge_range(0, 0, 0, len(COLUMNS) - 1, f"PresuControl — {sheet_name} ({len(data_list)} presupuestos)", title_format)
+            for idx, col in enumerate(COLUMNS):
+                ws_sheet.write(1, idx, col, header_format)
+            for row_idx, r in enumerate(data_list):
+                for col_idx, val in enumerate(budget_row(r)):
+                    fmt = money_format if col_idx == 4 else cell_format
+                    ws_sheet.write(2 + row_idx, col_idx, val, fmt)
+            ws_sheet.set_column(0, 0, 16)
+            ws_sheet.set_column(1, 1, 30)
+            ws_sheet.set_column(2, 2, 25)
+            ws_sheet.set_column(3, 3, 20)
+            ws_sheet.set_column(4, 4, 14)
+            ws_sheet.set_column(5, 5, 28)
+            ws_sheet.set_column(6, 6, 12)
+            ws_sheet.set_column(7, 7, 12)
+            ws_sheet.set_column(8, 12, 20)
+            ws_sheet.freeze_panes(2, 0)
+            ws_sheet.autofilter(1, 0, len(data_list) + 1, len(COLUMNS) - 1)
 
-        df_estado = pd.DataFrame([
-            {"Estado": item["name"], "Cantidad": item["value"]}
-            for item in payload["presupuestos_por_estado"]
-        ])
-        df_estado.to_excel(writer, index=False, sheet_name="Por Estado", startrow=1)
-        ws_estado = writer.sheets["Por Estado"]
-        for idx, col in enumerate(df_estado.columns):
-            ws_estado.write(0, idx, col, header_format)
-        ws_estado.set_column(0, 0, 30)
-        ws_estado.set_column(1, 1, 15)
+        # Summary charts helper
+        def write_chart_sheet(sheet_name, data, col1, col2, chart_title=None):
+            df = pd.DataFrame([{col1: item["name"], col2: item["value"]} for item in data])
+            df.to_excel(writer, index=False, sheet_name=sheet_name, startrow=1)
+            ws_chart = writer.sheets[sheet_name]
+            ws_chart.merge_range(0, 0, 0, 1, f"PresuControl — {sheet_name}", title_format)
+            for idx, col in enumerate(df.columns):
+                ws_chart.write(1, idx, col, header_format)
+            ws_chart.set_column(0, 0, 35)
+            ws_chart.set_column(1, 1, 15)
+            ws_chart.freeze_panes(2, 0)
+            ws_chart.autofilter(1, 0, len(df) + 1, 1)
+            if len(df) > 0:
+                chart = workbook.add_chart({"type": "bar"})
+                chart.add_series({"name": col2, "categories": f"='{sheet_name}'!$A$3:$A${len(df)+2}", "values": f"='{sheet_name}'!$B$3:$B${len(df)+2}", "fill": {"color": chart_colors[0]}})
+                chart.set_title({"name": chart_title or sheet_name})
+                chart.set_legend({"none": True})
+                chart.set_size({"width": 500, "height": max(200, len(df) * 20)})
+                ws_chart.insert_chart("D2", chart)
 
-        df_aceptados = pd.DataFrame([
-            {"Mes": item["name"], "Aceptados": item["value"]}
-            for item in payload["aceptados_por_mes"]
-        ])
-        df_aceptados.to_excel(writer, index=False, sheet_name="Aceptados por Mes", startrow=1)
-        ws_aceptados = writer.sheets["Aceptados por Mes"]
-        for idx, col in enumerate(df_aceptados.columns):
-            ws_aceptados.write(0, idx, col, header_format)
-        ws_aceptados.set_column(0, 0, 15)
-        ws_aceptados.set_column(1, 1, 15)
+        # ── Charts ──
+        write_chart_sheet("01- Gráfico Estados", payload["presupuestos_por_estado"], "Estado", "Cantidad", "Presupuestos por estado")
+        write_chart_sheet("02- Gráfico Prioridades", payload["prioridades"], "Prioridad", "Cantidad", "Distribución de prioridades")
+        write_chart_sheet("03- Gráfico Aceptados", payload["aceptados_por_mes"], "Mes", "Aceptados", "Aceptados por mes")
+        write_chart_sheet("04- Gráfico Cancelados", payload["cancelados_por_mes"], "Mes", "Cancelados", "Cancelados por mes")
+        write_chart_sheet("05- Gráfico Gestores", payload["pendientes_por_gestor"], "Gestor", "Pendientes", "Pendientes por gestor")
+        write_chart_sheet("06- Gráfico Proveedores", payload["pendientes_por_proveedor"], "Proveedor", "Pendientes", "Pendientes por proveedor")
 
-        df_cancelados = pd.DataFrame([
-            {"Mes": item["name"], "Cancelados": item["value"]}
-            for item in payload["cancelados_por_mes"]
-        ])
-        df_cancelados.to_excel(writer, index=False, sheet_name="Cancelados por Mes", startrow=1)
-        ws_cancelados = writer.sheets["Cancelados por Mes"]
-        for idx, col in enumerate(df_cancelados.columns):
-            ws_cancelados.write(0, idx, col, header_format)
-        ws_cancelados.set_column(0, 0, 15)
-        ws_cancelados.set_column(1, 1, 15)
-
-        df_gestor = pd.DataFrame([
-            {"Gestor": item["name"], "Cantidad": item["value"]}
-            for item in payload["pendientes_por_gestor"]
-        ])
-        df_gestor.to_excel(writer, index=False, sheet_name="Por Gestor", startrow=1)
-        ws_gestor = writer.sheets["Por Gestor"]
-        for idx, col in enumerate(df_gestor.columns):
-            ws_gestor.write(0, idx, col, header_format)
-        ws_gestor.set_column(0, 0, 25)
-        ws_gestor.set_column(1, 1, 15)
-
-        df_proveedor = pd.DataFrame([
-            {"Proveedor": item["name"], "Cantidad": item["value"]}
-            for item in payload["pendientes_por_proveedor"]
-        ])
-        df_proveedor.to_excel(writer, index=False, sheet_name="Por Proveedor", startrow=1)
-        ws_proveedor = writer.sheets["Por Proveedor"]
-        for idx, col in enumerate(df_proveedor.columns):
-            ws_proveedor.write(0, idx, col, header_format)
-        ws_proveedor.set_column(0, 0, 25)
-        ws_proveedor.set_column(1, 1, 15)
+        # ── Detailed lists ──
+        write_detail_sheet("07- Sin aceptar", sin_aceptar)
+        write_detail_sheet("08- Sin pedido", sin_pedido)
+        write_detail_sheet("09- Sin plazo", sin_plazo)
+        write_detail_sheet("10- En fabricación", en_fabricacion)
+        write_detail_sheet("11- Bloqueados", bloqueados)
+        write_detail_sheet("12- Cancelados", cancelados)
+        write_detail_sheet("13- Cerrados este mes", cerrados_mes)
+        write_detail_sheet("14- Todos activos", active)
 
     output.seek(0)
-    return StreamingResponse(output, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": "attachment; filename=presucontrol_informe.xlsx"})
+    filename = f"presucontrol_informe_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M')}.xlsx"
+    return StreamingResponse(output, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": f"attachment; filename={filename}"})
 
 
 def prepare_export_rows(rows: list[Presupuesto]) -> list[dict[str, Any]]:

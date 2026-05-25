@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Columns3, Download, Plus, RefreshCw, RotateCcw } from 'lucide-react'
 import { PageHeader } from '../components/PageHeader'
@@ -17,6 +17,34 @@ export function Presupuestos() {
   const [params, setParams] = useSearchParams({ page: '1', page_size: '50', ocultar_cerrados: 'true' })
   const [visible, setVisible] = useState<string[]>(defaultColumns)
   const [compact, setCompact] = useState(false)
+  const [prefsLoaded, setPrefsLoaded] = useState(false)
+
+  // Load user preferences from API (fallback to localStorage)
+  useEffect(() => {
+    api.get<Record<string, any>>('/usuarios/me/preferencias')
+      .then(prefs => {
+        if (prefs.presupuestosColumns) setVisible(prefs.presupuestosColumns)
+        if (prefs.presupuestosCompact != null) setCompact(prefs.presupuestosCompact)
+      })
+      .catch(() => {
+        // Fallback to localStorage
+        try {
+          const saved = localStorage.getItem('presupuestosColumns')
+          if (saved) setVisible(JSON.parse(saved))
+          setCompact(localStorage.getItem('presupuestosCompact') === 'true')
+        } catch {}
+      })
+      .finally(() => setPrefsLoaded(true))
+  }, [])
+
+  // Save to API + localStorage on change (skip initial load)
+  useEffect(() => {
+    if (!prefsLoaded) return
+    const prefs = { presupuestosColumns: visible, presupuestosCompact: compact }
+    api.patch('/usuarios/me/preferencias', prefs).catch(() => {})
+    localStorage.setItem('presupuestosColumns', JSON.stringify(visible))
+    localStorage.setItem('presupuestosCompact', String(compact))
+  }, [visible, compact, prefsLoaded])
   const metadataOptions = useMetadataOptions()
   const query = params.toString()
   const { data, loading, error, reload } = useData<PaginatedPresupuestos>(() => api.get(`/presupuestos-page?${query}`), [query])

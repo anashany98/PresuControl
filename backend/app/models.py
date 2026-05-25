@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func, Numeric, CheckConstraint, Index
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func, Numeric, CheckConstraint, Index, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .database import Base
 
@@ -146,6 +146,7 @@ class Usuario(Base):
     reset_password_expira_en: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     creado_en: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     ultimo_login: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    preferencias: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
 class EmailNotificationLog(Base):

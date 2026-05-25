@@ -1,21 +1,94 @@
 import { NavLink, useNavigate } from 'react-router-dom'
-import { Bell, ChevronDown, LogOut, Menu, Search, Settings, UserCheck } from 'lucide-react'
-import { type FormEvent, useState } from 'react'
+import { Bell, ChevronDown, Gauge, LogOut, Menu, Search, Settings, UserCheck, X } from 'lucide-react'
+import { type FormEvent, useRef, useState, useEffect } from 'react'
 import { isSystemAdmin, useAuth } from '../utils/auth'
+import type { NavSection } from './Sidebar'
 
 interface Props {
-  notifCount: number
+  sections: NavSection[]
+  counters: Record<string, number>
   onMenuClick: () => void
 }
 
-export function Topbar({ notifCount, onMenuClick }: Props) {
+function NavDropdown({ section, counters }: { section: NavSection; counters: Record<string, number> }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
+  function onEnter() {
+    clearTimeout(timeoutRef.current)
+    setOpen(true)
+  }
+  function onLeave() {
+    timeoutRef.current = setTimeout(() => setOpen(false), 200)
+  }
+
+  return (
+    <div
+      ref={ref}
+      className="topbar-nav-group"
+      onMouseEnter={onEnter}
+      onMouseLeave={onLeave}
+    >
+      <button
+        className="topbar-nav-dropdown-trigger"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+      >
+        {section.label} <ChevronDown size={12} className={`chevron ${open ? 'open' : ''}`} />
+      </button>
+      {open && (
+        <div className="topbar-nav-dropdown">
+          {section.links.map(({ to, label, icon: Icon, counter }) => {
+            const value = counter ? counters[counter] : undefined
+            return (
+              <NavLink
+                key={to}
+                to={to}
+                end={to === '/'}
+                className={({ isActive }) =>
+                  `topbar-nav-link${isActive ? ' active' : ''}`
+                }
+                title={label}
+                onClick={() => setOpen(false)}
+              >
+                <Icon size={16} />
+                <span>{label}</span>
+                {value != null && value !== 0 && (
+                  <span className="nav-badge">{value}</span>
+                )}
+              </NavLink>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export function Topbar({ sections, counters, onMenuClick }: Props) {
   const [q, setQ] = useState('')
   const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const userMenuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) { if (e.key === 'Escape') setUserMenuOpen(false) }
+    if (userMenuOpen) document.addEventListener('keydown', handleKey)
+    return () => document.removeEventListener('keydown', handleKey)
+  }, [userMenuOpen])
   const navigate = useNavigate()
   const { user, logout } = useAuth()
 
   const isAdmin = isSystemAdmin(user)
-  const hasUnread = notifCount > 0
+  const hasUnread = (counters.notificaciones_sin_leer || 0) > 0
 
   function submit(e: FormEvent) {
     e.preventDefault()
@@ -29,43 +102,46 @@ export function Topbar({ notifCount, onMenuClick }: Props) {
 
   return (
     <header className="topbar">
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      {/* ── Left: brand + nav dropdowns ── */}
+      <div className="topbar-left">
         <button
-          className="btn secondary small"
+          className="btn secondary small mobile-menu-btn"
           onClick={onMenuClick}
           aria-label="Abrir menú"
         >
           <Menu size={20} />
         </button>
-        <div className="sidebar-brand" style={{ margin: 0, padding: 0, border: 0 }}>
-          📊 <span style={{ color: 'var(--color-primary)' }}>PresuControl</span>
-        </div>
+
+        <NavLink to="/" className="topbar-brand">
+          <Gauge size={22} />
+          <span>PresuControl</span>
+        </NavLink>
+
+        {/* Desktop nav dropdowns */}
+        <nav className="topbar-nav">
+          {sections.map(section => (
+            <NavDropdown key={section.label} section={section} counters={counters} />
+          ))}
+        </nav>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        {/* Search */}
-        <form className="search-global" onSubmit={submit}>
+      {/* ── Right: search + notifications + user ── */}
+      <div className="topbar-right">
+        <form className="topbar-search" onSubmit={submit}>
           <Search size={16} />
           <input
             value={q}
             onChange={e => setQ(e.target.value)}
-            placeholder="Buscar presupuestos…"
+            placeholder="Buscar…"
             aria-label="Buscar presupuestos"
-            title="Pulsa / para buscar"
           />
           {q && (
-            <button
-              type="button"
-              className="search-clear"
-              onClick={() => setQ('')}
-              aria-label="Limpiar búsqueda"
-            >
-              ✕
+            <button type="button" className="search-clear" onClick={() => setQ('')} aria-label="Limpiar">
+              <X size={14} />
             </button>
           )}
         </form>
 
-        {/* Notifications */}
         <button
           className="btn secondary small"
           style={{ position: 'relative' }}
@@ -75,13 +151,12 @@ export function Topbar({ notifCount, onMenuClick }: Props) {
           <Bell size={18} />
           {hasUnread && (
             <span className="nav-badge" style={{ position: 'absolute', top: -4, right: -4 }}>
-              {notifCount}
+              {counters.notificaciones_sin_leer || 0}
             </span>
           )}
         </button>
 
-        {/* User menu */}
-        <div style={{ position: 'relative' }}>
+        <div className="user-menu-container">
           <button
             className="btn secondary small"
             onClick={() => setUserMenuOpen(!userMenuOpen)}
@@ -90,17 +165,15 @@ export function Topbar({ notifCount, onMenuClick }: Props) {
           >
             <span
               style={{
-                width: 28, height: 28,
-                borderRadius: '50%',
-                background: 'var(--color-primary)',
-                color: '#fff',
+                width: 28, height: 28, borderRadius: '50%',
+                background: 'var(--color-primary)', color: '#fff',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 12, fontWeight: 700,
               }}
             >
               {user?.nombre?.charAt(0) || 'U'}
             </span>
-            <ChevronDown size={14} style={{ transition: 'transform 0.2s ease' }} />
+            <ChevronDown size={14} />
           </button>
 
           {userMenuOpen && (

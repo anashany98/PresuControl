@@ -23,10 +23,9 @@ const Configuracion = lazy(() => import('./pages/Configuracion').then(m => ({ de
 const Avisos = lazy(() => import('./pages/Avisos').then(m => ({ default: m.Avisos })))
 const Login = lazy(() => import('./pages/Login').then(m => ({ default: m.Login })))
 const Registro = lazy(() => import('./pages/Registro').then(m => ({ default: m.Registro })))
-const Hoy = lazy(() => import('./pages/Hoy').then(m => ({ default: m.Hoy })))
 const AceptadosSinPedido = lazy(() => import('./pages/AceptadosSinPedido').then(m => ({ default: m.AceptadosSinPedido })))
 const DineroRiesgo = lazy(() => import('./pages/DineroRiesgo').then(m => ({ default: m.DineroRiesgo })))
-const MiMesa = lazy(() => import('./pages/MiMesa').then(m => ({ default: m.MiMesa })))
+const MiTrabajo = lazy(() => import('./pages/MiTrabajo').then(m => ({ default: m.MiTrabajo })))
 const Logs = lazy(() => import('./pages/Logs').then(m => ({ default: m.Logs })))
 const Usuarios = lazy(() => import('./pages/Usuarios').then(m => ({ default: m.Usuarios })))
 const Buscar = lazy(() => import('./pages/Buscar').then(m => ({ default: m.Buscar })))
@@ -66,8 +65,9 @@ const router = createBrowserRouter([
   { path: '/', element: <ProtectedLayout />, children: [
     { index: true, element: <Suspense fallback={<PageLoader />}><Dashboard /></Suspense> },
     { path: 'dashboard', element: <Suspense fallback={<PageLoader />}><Dashboard /></Suspense> },
-    { path: 'hoy', element: <Suspense fallback={<PageLoader />}><Hoy /></Suspense> },
-    { path: 'mi-mesa', element: <Suspense fallback={<PageLoader />}><MiMesa /></Suspense> },
+    { path: 'hoy', element: <Suspense fallback={<PageLoader />}><MiTrabajo /></Suspense> },
+    { path: 'mi-mesa', element: <Suspense fallback={<PageLoader />}><MiTrabajo /></Suspense> },
+    { path: 'mi-trabajo', element: <Suspense fallback={<PageLoader />}><MiTrabajo /></Suspense> },
     { path: 'aceptados-sin-pedido', element: <Suspense fallback={<PageLoader />}><AceptadosSinPedido /></Suspense> },
     { path: 'dinero-riesgo', element: <Suspense fallback={<PageLoader />}><DineroRiesgo /></Suspense> },
     { path: 'buscar', element: <Suspense fallback={<PageLoader />}><Buscar /></Suspense> },

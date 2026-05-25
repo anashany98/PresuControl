@@ -38,7 +38,7 @@ export function Logs() {
     if (filters.presupuesto_id) q.set('presupuesto_id', filters.presupuesto_id)
     if (filters.date_from) q.set('date_from', filters.date_from)
     if (filters.date_to) q.set('date_to', filters.date_to)
-    q.set('limit', '1000')
+    q.set('limit', '500')
     return q
   }, [filters])
 
@@ -48,7 +48,7 @@ export function Logs() {
     if (filters.presupuesto_id) q.set('presupuesto_id', filters.presupuesto_id)
     if (filters.date_from) q.set('date_from', filters.date_from)
     if (filters.date_to) q.set('date_to', filters.date_to)
-    q.set('limit', '1000')
+    q.set('limit', '500')
     return q
   }, [filters])
 

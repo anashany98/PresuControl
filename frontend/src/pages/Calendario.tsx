@@ -187,7 +187,7 @@ export function Calendario() {
                           onClick={() => setSelectedDay(d)}
                         >
                           {evs.length === 0 ? (
-                            <span className="cal-no-events">â€”</span>
+                            <span className="cal-no-events">—</span>
                           ) : (
 evs.map((e, i) => (
                                 <button
@@ -292,11 +292,11 @@ evs.map((e, i) => (
                       <div className="cal-panel-client">{e.p.cliente}</div>
                       <div className="cal-panel-meta">
                         <span>{e.p.estado}</span>
-                        <span className="cal-panel-sep">Â·</span>
+                        <span className="cal-panel-sep">·</span>
                         <span>{fmtDate(e.date)}</span>
-                        <span className="cal-panel-sep">Â·</span>
+                        <span className="cal-panel-sep">·</span>
                         <span>{e.p.importe}â‚¬</span>
-                        <span className="cal-panel-sep">Â·</span>
+                        <span className="cal-panel-sep">·</span>
                         <span>{e.p.gestor}</span>
                       </div>
                       <div className="cal-panel-arrow">
@@ -957,7 +957,7 @@ function InfoRow({ icon: Icon, label, value, badge }: { icon: typeof Clock; labe
         {label}
       </span>
       <span className="cal-modal-value">
-        {badge || value || <span className="cal-modal-empty">â€”</span>}
+        {badge || value || <span className="cal-modal-empty">—</span>}
       </span>
     </div>
   )

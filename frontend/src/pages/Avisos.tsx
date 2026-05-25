@@ -15,7 +15,6 @@ export function Avisos() {
   const [tab, setTab] = useState<'activos' | 'historial'>('activos')
   const [msg, setMsg] = useState<string | null>(null)
   const [confirmSend, setConfirmSend] = useState(false)
-  const [showConfig, setShowConfig] = useState(false)
   async function sendDigest() {
     setMsg(null)
     try {
@@ -41,7 +40,7 @@ export function Avisos() {
   }
   return <>
     <PageHeader title="Centro de avisos" subtitle="Avisos internos, resumen por email y escalado si nadie actúa." actions={<>
-      <button className="btn secondary" onClick={() => setShowConfig(true)}><Settings size={16}/>Configurar</button>
+      <Link className="btn secondary" to="/configuracion"><Settings size={16}/>Configurar</Link>
       <button className="btn secondary" onClick={reload}>Actualizar</button>
       <button className="btn secondary" onClick={runAutomatic}><PlayCircle size={16}/>Revisión automática</button>
       <button className="btn secondary" onClick={escalateNow}><Send size={16}/>Escalar ahora</button>
@@ -71,33 +70,6 @@ export function Avisos() {
           </span>
         </div>
       </div>)}
-    </div>}
-    {showConfig && <div className="modal-backdrop" onClick={() => setShowConfig(false)}>
-      <div className="modal card" onClick={e => e.stopPropagation()} style={{ padding: 24 }}>
-        <h3 style={{ margin: '0 0 16px' }}>Configurar umbrales de aviso</h3>
-        <p style={{ color: 'var(--muted)', marginBottom: 16 }}>Los cambios se guardan automáticamente.</p>
-        <div className="form-grid two">
-          <div className="field">
-            <label>Días para aviso naranja</label>
-            <input type="number" className="input" defaultValue={3} min={1} />
-          </div>
-          <div className="field">
-            <label>Días para aviso rojo</label>
-            <input type="number" className="input" defaultValue={7} min={1} />
-          </div>
-          <div className="field">
-            <label>Intervalo revisión (minutos)</label>
-            <input type="number" className="input" defaultValue={30} min={5} />
-          </div>
-          <div className="field">
-            <label>Email destino avisos</label>
-            <input type="email" className="input" placeholder="avisos@empresa.com" />
-          </div>
-        </div>
-        <div className="modal-actions">
-          <button className="btn secondary" onClick={() => setShowConfig(false)}>Cerrar</button>
-        </div>
-      </div>
     </div>}
   </>
 }

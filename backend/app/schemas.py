@@ -352,6 +352,13 @@ class UserRegister(BaseModel):
     password: str = Field(..., min_length=12)
 
 
+class UserAdminCreate(BaseModel):
+    nombre: str = Field(..., min_length=2)
+    email: str = Field(..., min_length=5)
+    password: str = Field(..., min_length=8)
+    rol: Literal["admin_sistema", "gestion"] = "gestion"
+
+
 class UserLogin(BaseModel):
     email: str = Field(..., min_length=5)
     password: str = Field(..., min_length=1)
