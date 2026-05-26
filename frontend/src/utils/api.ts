@@ -166,7 +166,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     headers: { ...headers, ...(options.headers || {}) },
   })
   if (!res.ok) {
-    const isAuthPublicPath = path === '/auth/me' || path.startsWith('/auth/login') || path.startsWith('/auth/register') || path.startsWith('/auth/password/')
+    const isAuthPublicPath = path === '/auth/me' || path.startsWith('/auth/login') || path.startsWith('/auth/register')
     if (res.status === 401 && !isAuthPublicPath) {
       clearAuthToken()
       window.location.href = '/login'

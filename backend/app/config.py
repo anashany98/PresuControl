@@ -3,8 +3,6 @@ from __future__ import annotations
 import os
 import logging
 
-import logging
-
 logger = logging.getLogger(__name__)
 
 PLACEHOLDER_MARKERS = (
@@ -75,13 +73,13 @@ def validate_runtime_config() -> None:
     _require("*" not in cors_origins, "CORS_ORIGINS cannot contain '*' in production.", errors)
     _require(env_flag("AUTH_ENABLED", "true"), "AUTH_ENABLED cannot be disabled in production.", errors)
 
+    _require(bool(app_public_url), "APP_PUBLIC_URL is required in production.", errors)
+    if app_public_url:
+        _require(app_public_url.startswith("https://"), "APP_PUBLIC_URL must use HTTPS in production.", errors)
+
     # Warnings: functional but suboptimal
     if not cors_origins:
         warnings.append("CORS_ORIGINS is empty. No cross-origin requests will be allowed.")
-    if not app_public_url:
-        warnings.append("APP_PUBLIC_URL is not set. Email links will not work.")
-    elif app_public_url and not app_public_url.startswith("https://"):
-        warnings.append(f"APP_PUBLIC_URL ({app_public_url}) is not HTTPS. Email links may be flagged as insecure.")
 
     if warnings:
         for w in warnings:
@@ -98,7 +96,7 @@ def get_fastapi_docs_config() -> dict[str, str | None]:
 
 
 def get_public_paths() -> set[str]:
-    paths = {"/health", "/health/db", "/auth/register", "/auth/login", "/debug/db-test", "/debug/login-test", "/debug/create-admin", "/debug/fix-all"}
+    paths = {"/health", "/health/db", "/auth/register", "/auth/login"}
     if not is_production() and not env_flag("DISABLE_API_DOCS", "false"):
         paths.update({"/openapi.json", "/docs", "/redoc"})
     return paths

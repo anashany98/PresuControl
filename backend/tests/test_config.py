@@ -19,6 +19,17 @@ def test_docs_disabled_in_production(monkeypatch):
     assert "/openapi.json" not in get_public_paths()
 
 
+def test_debug_endpoints_are_never_public(monkeypatch):
+    monkeypatch.setenv("ENV", "production")
+
+    public_paths = get_public_paths()
+
+    assert "/debug/db-test" not in public_paths
+    assert "/debug/login-test" not in public_paths
+    assert "/debug/create-admin" not in public_paths
+    assert "/debug/fix-all" not in public_paths
+
+
 def test_production_rejects_placeholder_secrets(monkeypatch):
     monkeypatch.setenv("ENV", "production")
     monkeypatch.setenv("DATABASE_URL", "postgresql://presucontrol:change_this@postgres:5432/presucontrol")

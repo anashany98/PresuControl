@@ -5,7 +5,6 @@ import io
 import json
 import logging
 import os
-import traceback
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
@@ -44,24 +43,17 @@ from .schemas import (
     ProveedorUpdate,
     SettingsOut,
     SettingsUpdate,
-    UserRegister,
-    UserAdminCreate,
-    UserLogin,
-    TokenOut,
-    UserOut,
     QuickAction,
     EmailTestPayload,
     ArchivePayload,
     EmailLogOut,
     PaginatedPresupuestos,
-    UserApprovalPayload,
-    PasswordAdminReset,
     SidebarCounters,
 )
 from .settings import get_settings, update_settings
 from .config import get_fastapi_docs_config, get_public_paths, validate_runtime_config
-from .auth import create_access_token, get_authenticated_user_from_request, hash_password, is_auth_enabled, normalize_email, verify_password
-from .access_control import ADMIN_ROLE, GESTION_ROLE, require_gestion_or_admin, require_system_manager, sync_legacy_system_flag, user_role
+from .auth import get_authenticated_user_from_request, is_auth_enabled
+from .access_control import ADMIN_ROLE, require_gestion_or_admin, require_system_manager, user_role
 from .analytics import (
     active_rows_with_risk,
     build_dashboard_payload,
@@ -204,146 +196,11 @@ def ensure_schema_compatibility():
         conn.execute(text("ALTER TABLE email_notification_logs ADD COLUMN IF NOT EXISTS escalation_level INTEGER NOT NULL DEFAULT 0"))
 
 
-if os.getenv("RUN_DEFENSIVE_MIGRATIONS", "true").lower() in {"1", "true", "yes", "on"}:
+if os.getenv("RUN_DEFENSIVE_MIGRATIONS", "false").lower() in {"1", "true", "yes", "on"}:
     ensure_schema_compatibility()
 
 
 PUBLIC_PATHS = get_public_paths()
-
-
-# Temporary debug: auto-repair missing DB columns and tables
-import traceback
-@app.get("/debug/db-test")
-def debug_db_test(db: Session = Depends(get_db)):
-    try:
-        from .models import Usuario
-        count = db.query(Usuario).count()
-        return {"ok": True, "user_count": count}
-    except Exception as e:
-        db.rollback()
-        # Create all missing tables + add missing columns
-        Base.metadata.create_all(bind=engine, checkfirst=True)
-        with engine.begin() as conn:
-            for stmt in [
-                "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS preferencias JSON",
-                "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS aprobado BOOLEAN NOT NULL DEFAULT TRUE",
-                "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS aprobado_en TIMESTAMP WITH TIME ZONE",
-                "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS aprobado_por VARCHAR(255)",
-                "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS puede_gestionar_sistema BOOLEAN NOT NULL DEFAULT FALSE",
-                "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS rol VARCHAR(40) NOT NULL DEFAULT 'gestion'",
-                "ALTER TABLE comentarios ADD COLUMN IF NOT EXISTS usuario_id INTEGER",
-                "ALTER TABLE comentarios ADD COLUMN IF NOT EXISTS usuario_nombre VARCHAR(120)",
-                "ALTER TABLE comentarios ADD COLUMN IF NOT EXISTS usuario_email VARCHAR(255)",
-                "ALTER TABLE historial_cambios ADD COLUMN IF NOT EXISTS usuario_id INTEGER",
-                "ALTER TABLE historial_cambios ADD COLUMN IF NOT EXISTS usuario_nombre VARCHAR(120)",
-                "ALTER TABLE historial_cambios ADD COLUMN IF NOT EXISTS usuario_email VARCHAR(255)",
-                "ALTER TABLE presupuestos ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1",
-                "ALTER TABLE presupuestos ADD COLUMN IF NOT EXISTS archivado BOOLEAN NOT NULL DEFAULT FALSE",
-                "ALTER TABLE presupuestos ADD COLUMN IF NOT EXISTS archivado_en TIMESTAMP WITH TIME ZONE",
-                "ALTER TABLE presupuestos ADD COLUMN IF NOT EXISTS archivado_por VARCHAR(255)",
-                "ALTER TABLE presupuestos ADD COLUMN IF NOT EXISTS motivo_archivado TEXT",
-                "ALTER TABLE email_notification_logs ADD COLUMN IF NOT EXISTS escalation_level INTEGER NOT NULL DEFAULT 0",
-            ]:
-                conn.execute(text(stmt))
-        from .models import Usuario
-        count = db.query(Usuario).count()
-        return {"ok": True, "user_count": count, "fixed": True}
-
-@app.get("/debug/login-test")
-def debug_login_test(db: Session = Depends(get_db), pwd: str = "admin123456"):
-    try:
-        from .auth import normalize_email, verify_password, hash_password
-        from .models import Usuario, LoginAttempt
-        email = normalize_email("admin@admin.com")
-        # 1. login_attempts table
-        la_count = db.query(LoginAttempt).count()
-        # 2. query user
-        user = db.query(Usuario).filter(Usuario.email == email).first()
-        if not user:
-            return {"ok": False, "step": "user_query", "error": "User not found"}
-        # 3. Reset password to ensure it matches
-        user.hashed_password = hash_password(pwd)
-        user.activo = True
-        user.aprobado = True
-        user.puede_gestionar_sistema = True
-        user.rol = "admin_sistema"
-        db.commit()
-        # 4. verify
-        pw_ok = verify_password(pwd, user.hashed_password)
-        return {"ok": True, "user_found": True, "user_email": user.email, "password_reset_to": pwd, "password_ok": pw_ok, "login_attempts_count": la_count, "user_active": user.activo, "user_approved": user.aprobado}
-    except Exception as e:
-        db.rollback()
-        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()[:800]}
-
-@app.get("/debug/create-admin")
-def debug_create_admin(db: Session = Depends(get_db)):
-    try:
-        from .auth import hash_password
-        from .models import Usuario
-        from datetime import datetime, timezone
-        # Create if not exists
-        existing = db.query(Usuario).filter(Usuario.email == "admin@admin.com").first()
-        if existing:
-            existing.hashed_password = hash_password("admin123456")
-            existing.activo = True
-            existing.aprobado = True
-            existing.puede_gestionar_sistema = True
-            existing.rol = "admin_sistema"
-        else:
-            user = Usuario(
-                nombre="Admin",
-                email="admin@admin.com",
-                hashed_password=hash_password("admin123456"),
-                activo=True,
-                aprobado=True,
-                puede_gestionar_sistema=True,
-                rol="admin_sistema",
-            )
-            db.add(user)
-        db.commit()
-        return {"ok": True, "email": "admin@admin.com", "password": "admin123456"}
-    except Exception as e:
-        db.rollback()
-        return {"ok": False, "error": str(e)}
-
-@app.get("/debug/fix-all")
-def debug_fix_all():
-    """Create all missing tables, columns, and constraints."""
-    results = []
-    # 1. Create missing tables (idempotent)
-    results.append("create_all: " + str(Base.metadata.create_all(bind=engine, checkfirst=True)))
-    # 2. Add missing columns
-    with engine.begin() as conn:
-        for stmt in [
-            "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS preferencias JSON",
-            "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS aprobado BOOLEAN NOT NULL DEFAULT TRUE",
-            "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS aprobado_en TIMESTAMP WITH TIME ZONE",
-            "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS aprobado_por VARCHAR(255)",
-            "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS puede_gestionar_sistema BOOLEAN NOT NULL DEFAULT FALSE",
-            "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS rol VARCHAR(40) NOT NULL DEFAULT 'gestion'",
-            "ALTER TABLE comentarios ADD COLUMN IF NOT EXISTS usuario_id INTEGER",
-            "ALTER TABLE comentarios ADD COLUMN IF NOT EXISTS usuario_nombre VARCHAR(120)",
-            "ALTER TABLE comentarios ADD COLUMN IF NOT EXISTS usuario_email VARCHAR(255)",
-            "ALTER TABLE historial_cambios ADD COLUMN IF NOT EXISTS usuario_id INTEGER",
-            "ALTER TABLE historial_cambios ADD COLUMN IF NOT EXISTS usuario_nombre VARCHAR(120)",
-            "ALTER TABLE historial_cambios ADD COLUMN IF NOT EXISTS usuario_email VARCHAR(255)",
-            "ALTER TABLE presupuestos ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1",
-            "ALTER TABLE presupuestos ADD COLUMN IF NOT EXISTS archivado BOOLEAN NOT NULL DEFAULT FALSE",
-            "ALTER TABLE presupuestos ADD COLUMN IF NOT EXISTS archivado_en TIMESTAMP WITH TIME ZONE",
-            "ALTER TABLE presupuestos ADD COLUMN IF NOT EXISTS archivado_por VARCHAR(255)",
-            "ALTER TABLE presupuestos ADD COLUMN IF NOT EXISTS motivo_archivado TEXT",
-            "ALTER TABLE email_notification_logs ADD COLUMN IF NOT EXISTS escalation_level INTEGER NOT NULL DEFAULT 0",
-            # Ensure constraints exist
-            "ALTER TABLE login_attempts DROP CONSTRAINT IF EXISTS uq_login_attempt_ip_email",
-            "ALTER TABLE login_attempts ADD CONSTRAINT uq_login_attempt_ip_email UNIQUE (ip, email)",
-        ]:
-            try:
-                conn.execute(text(stmt))
-                results.append(f"OK: {stmt[:60]}")
-            except Exception as e:
-                results.append(f"ERR: {stmt[:60]} -> {e}")
-    results.append("DONE")
-    return {"ok": True, "results": results}
 
 
 @app.middleware("http")
@@ -365,272 +222,13 @@ async def require_auth_middleware(request: Request, call_next):
     return await call_next(request)
 
 
-
-def get_current_user(request: Request) -> Usuario:
+def get_current_user(request: Request) -> Usuario | None:
+    if not is_auth_enabled():
+        return getattr(request.state, "user", None)
     user = getattr(request.state, "user", None)
     if not user:
         raise HTTPException(status_code=401, detail="No autenticado")
     return user
-
-
-def enforce_login_rate_limit(email: str, request: Request, db: Session):
-    """Rate limit login attempts per email+IP."""
-    ip = request.client.host if request.client else "unknown"
-    now = datetime.now(timezone.utc)
-    window = now - timedelta(minutes=int(os.getenv("LOGIN_RATE_LIMIT_WINDOW_MINUTES", "10")))
-    max_attempts = int(os.getenv("LOGIN_RATE_LIMIT_ATTEMPTS", "5"))
-    attempt = db.query(LoginAttempt).filter(LoginAttempt.ip == ip, LoginAttempt.email == email).first()
-    if attempt:
-        stored = attempt.window_start
-        if stored.tzinfo is None:
-            stored = stored.replace(tzinfo=timezone.utc)
-        if stored > window and attempt.attempts >= max_attempts:
-            raise HTTPException(status_code=429, detail="Demasiados intentos. Intenta en unos minutos.")
-
-
-def register_failed_login(email: str, request: Request, db: Session):
-    ip = request.client.host if request.client else "unknown"
-    now = datetime.now(timezone.utc)
-    attempt = db.query(LoginAttempt).filter(LoginAttempt.ip == ip, LoginAttempt.email == email).first()
-    if attempt:
-        attempt.attempts += 1
-        attempt.window_start = now
-    else:
-        db.add(LoginAttempt(ip=ip, email=email, attempts=1, window_start=now))
-    db.commit()
-
-
-def clear_failed_logins(email: str, request: Request, db: Session):
-    ip = request.client.host if request.client else "unknown"
-    db.query(LoginAttempt).filter(LoginAttempt.ip == ip, LoginAttempt.email == email).delete()
-    db.commit()
-
-
-def ensure_aware_utc(value: datetime) -> datetime:
-    if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc)
-
-
-def enforce_registration_rate_limit(request: Request, db: Session):
-    max_attempts = int(os.getenv("REGISTRATION_RATE_LIMIT_ATTEMPTS", "5"))
-    minutes = int(os.getenv("REGISTRATION_RATE_LIMIT_WINDOW_MINUTES", "60"))
-    now = datetime.now(timezone.utc)
-    ip = request.client.host if request.client else "unknown"
-    window_start = now - timedelta(minutes=minutes)
-
-    db.query(RegistrationAttempt).filter(
-        RegistrationAttempt.ip == ip,
-        RegistrationAttempt.window_start < window_start,
-    ).delete()
-
-    from sqlalchemy.dialects.postgresql import insert as pg_insert
-    stmt = pg_insert(RegistrationAttempt).values(ip=ip, attempts=1, window_start=now)
-    stmt = stmt.on_conflict_do_update(
-        index_elements=['ip'],
-        set_={'attempts': RegistrationAttempt.attempts + 1, 'window_start': now}
-    )
-    db.execute(stmt)
-    db.commit()
-
-    record = db.query(RegistrationAttempt).filter(RegistrationAttempt.ip == ip).first()
-    if record and record.attempts >= max_attempts:
-        raise HTTPException(status_code=429, detail=f"Demasiados intentos de registro. Prueba de nuevo en {minutes} minutos.")
-
-
-def user_to_out(user: Usuario) -> Usuario:
-    return user
-
-
-@app.post("/auth/register", response_model=TokenOut, status_code=201)
-def register(payload: UserRegister, request: Request, db: Session = Depends(get_db)):
-    enforce_registration_rate_limit(request, db)
-    email = normalize_email(payload.email)
-    exists = db.query(Usuario).filter(Usuario.email == email).first()
-    if exists:
-        raise HTTPException(status_code=409, detail="Ya existe un usuario con ese email.")
-
-    first_user = db.query(Usuario).count() == 0
-    requires_approval = os.getenv("REGISTRATION_REQUIRES_APPROVAL", "true").lower() in {"1", "true", "yes", "on"}
-    approved = first_user or not requires_approval
-    user = Usuario(
-        nombre=payload.nombre.strip(),
-        email=email,
-        hashed_password=hash_password(payload.password),
-        activo=approved,
-        aprobado=approved,
-        aprobado_en=datetime.now(timezone.utc) if approved else None,
-        aprobado_por="sistema" if approved else None,
-        puede_gestionar_sistema=first_user,
-        rol=ADMIN_ROLE if first_user else GESTION_ROLE,
-    )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    if not approved:
-        raise HTTPException(status_code=202, detail="Registro recibido. Tu cuenta queda pendiente de aceptación desde el panel.")
-    sync_legacy_system_flag(user)
-    token = create_access_token(user.email, {"name": user.nombre, "role": user_role(user)})
-    return {"access_token": token, "token_type": "bearer", "user": user}
-
-
-@app.post("/auth/login", response_model=TokenOut)
-def login(payload: UserLogin, request: Request, db: Session = Depends(get_db)):
-    try:
-        email = normalize_email(payload.email)
-        enforce_login_rate_limit(email, request, db)
-        user = db.query(Usuario).filter(Usuario.email == email).first()
-        if not user or not verify_password(payload.password, user.hashed_password):
-            register_failed_login(email, request, db)
-            raise HTTPException(status_code=401, detail="Email o contraseña incorrectos.")
-        if not user.activo or not user.aprobado:
-            raise HTTPException(status_code=403, detail="Cuenta pendiente de aceptación o desactivada.")
-        clear_failed_logins(email, request, db)
-        user.ultimo_login = datetime.now(timezone.utc)
-        db.commit()
-        db.refresh(user)
-        sync_legacy_system_flag(user)
-        token = create_access_token(user.email, {"name": user.nombre, "role": user_role(user)})
-        return {"access_token": token, "token_type": "bearer", "user": user}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("Login error: %s\n%s", str(e), traceback.format_exc())
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-
-@app.get("/auth/me", response_model=UserOut)
-def me(request: Request, db: Session = Depends(get_db)):
-    try:
-        user = get_authenticated_user_from_request(request, db)
-        if user:
-            sync_legacy_system_flag(user)
-            return user
-    except HTTPException:
-        pass
-    return JSONResponse(status_code=401, content={"detail": "No autenticado. Haz logout y login de nuevo."})
-
-@app.get("/usuarios", response_model=list[UserOut])
-def list_usuarios(request: Request, db: Session = Depends(get_db)):
-    require_system_manager(request)
-    return db.query(Usuario).order_by(desc(Usuario.creado_en)).all()
-
-
-@app.post("/usuarios", response_model=UserOut)
-def create_usuario(payload: UserAdminCreate, request: Request, db: Session = Depends(get_db)):
-    require_system_manager(request)
-    existing = db.query(Usuario).filter(Usuario.email == payload.email).first()
-    if existing:
-        raise HTTPException(status_code=422, detail="Ya existe un usuario con ese email.")
-    actor = current_actor(request)
-    user = Usuario(
-        nombre=payload.nombre,
-        email=payload.email,
-        hashed_password=hash_password(payload.password),
-        activo=True,
-        aprobado=True,
-        aprobado_en=datetime.now(timezone.utc),
-        aprobado_por=actor_label(actor),
-        puede_gestionar_sistema=payload.rol == ADMIN_ROLE,
-        rol=payload.rol,
-    )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    return user
-
-
-@app.get("/usuarios/pendientes", response_model=list[UserOut])
-def list_usuarios_pendientes(request: Request, db: Session = Depends(get_db)):
-    require_system_manager(request)
-    return db.query(Usuario).filter(or_(Usuario.aprobado == False, Usuario.activo == False)).order_by(desc(Usuario.creado_en)).all()  # noqa: E712
-
-
-@app.post("/usuarios/{usuario_id}/aceptar", response_model=UserOut)
-def aceptar_usuario(usuario_id: int, request: Request, db: Session = Depends(get_db)):
-    require_system_manager(request)
-    user = db.get(Usuario, usuario_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="Usuario no encontrado.")
-    actor = current_actor(request)
-    user.aprobado = True
-    user.activo = True
-    user.aprobado_en = datetime.now(timezone.utc)
-    user.aprobado_por = actor_label(actor)
-    if user_role(user) is None:
-        user.rol = GESTION_ROLE
-    sync_legacy_system_flag(user)
-    db.commit()
-    db.refresh(user)
-    return user
-
-
-@app.post("/usuarios/{usuario_id}/desactivar", response_model=UserOut)
-def desactivar_usuario(usuario_id: int, request: Request, db: Session = Depends(get_db)):
-    require_system_manager(request)
-    current = getattr(request.state, "user", None)
-    if current and current.id == usuario_id:
-        raise HTTPException(status_code=422, detail="No puedes desactivar tu propio usuario desde esta pantalla.")
-    user = db.get(Usuario, usuario_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="Usuario no encontrado.")
-    user.activo = False
-    db.commit()
-    db.refresh(user)
-    return user
-
-
-@app.post("/usuarios/{usuario_id}/toggle-gestion", response_model=UserOut)
-def toggle_gestion_usuario(usuario_id: int, payload: UserApprovalPayload, request: Request, db: Session = Depends(get_db)):
-    require_system_manager(request)
-    user = db.get(Usuario, usuario_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="Usuario no encontrado.")
-    if payload.rol is not None:
-        target_role = payload.rol
-    elif payload.puede_gestionar_sistema is not None:
-        target_role = ADMIN_ROLE if payload.puede_gestionar_sistema else GESTION_ROLE
-    else:
-        raise HTTPException(status_code=422, detail="Falta rol o puede_gestionar_sistema.")
-    user.rol = target_role
-    user.puede_gestionar_sistema = target_role == ADMIN_ROLE
-    db.commit()
-    db.refresh(user)
-    return user
-
-
-@app.post("/usuarios/{usuario_id}/reset-password", response_model=UserOut)
-def admin_reset_password(usuario_id: int, payload: PasswordAdminReset, request: Request, db: Session = Depends(get_db)):
-    require_system_manager(request)
-    user = db.get(Usuario, usuario_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="Usuario no encontrado.")
-    user.hashed_password = hash_password(payload.password)
-    db.commit()
-    db.refresh(user)
-    return user
-
-
-@app.get("/usuarios/me/preferencias")
-def get_my_preferencias(request: Request, db: Session = Depends(get_db)):
-    user = getattr(request.state, "user", None)
-    if not user:
-        raise HTTPException(status_code=401, detail="No autenticado.")
-    return user.preferencias or {}
-
-
-@app.patch("/usuarios/me/preferencias")
-def update_my_preferencias(payload: dict, request: Request, db: Session = Depends(get_db)):
-    user = getattr(request.state, "user", None)
-    if not user:
-        raise HTTPException(status_code=401, detail="No autenticado.")
-    current = user.preferencias or {}
-    current.update(payload)
-    user.preferencias = current
-    db.commit()
-    return current
-
 
 
 REQUIRED_IMPORT_COLUMNS = {
@@ -863,7 +461,7 @@ def metadata_autocomplete(field: str = Query(...), q: str = Query("", min_length
 def list_presupuestos(
     request: Request,
     db: Session = Depends(get_db),
-    user: Usuario = Depends(get_current_user),
+    user: Usuario | None = Depends(get_current_user),
     search: str | None = None,
     estado: str | None = None,
     prioridad: str | None = None,
@@ -881,7 +479,7 @@ def list_presupuestos(
 ):
     require_gestion_or_admin(request)
     # Auto-filter by gestor for non-admin users (unless explicit gestor filter is set)
-    if user_role(user) != ADMIN_ROLE and not gestor:
+    if user and user_role(user) != ADMIN_ROLE and not gestor:
         gestor = user.nombre
     q = apply_filters(db.query(Presupuesto).options(selectinload(Presupuesto.pedidos)), search, estado, prioridad, gestor, proveedor, incidencia)
     if not include_archivados:

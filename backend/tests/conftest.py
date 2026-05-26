@@ -65,10 +65,13 @@ def db_session():
 def setup_db():
     """Create tables before each test, drop after."""
     from app import models
+    import app.auth as auth_module
     assert models.Presupuesto
+    auth_module.AUTH_ENABLED = False
     install_test_db_overrides()
     Base.metadata.drop_all(bind=test_engine)
     Base.metadata.create_all(bind=test_engine)
     yield
     Base.metadata.drop_all(bind=test_engine)
+    auth_module.AUTH_ENABLED = False
     install_test_db_overrides()

@@ -58,6 +58,36 @@ class TestListUsuarios:
         assert len(data) >= 3
 
 
+class TestCreateUsuario:
+
+    def test_admin_puede_crear_usuario(self, monkeypatch, client, db_session):
+        """Admin puede crear usuarios desde el router de auth."""
+        monkeypatch.setattr("app.auth.AUTH_ENABLED", True)
+        manager = Usuario(
+            email="manager-create@test.com",
+            hashed_password=hash_password("pass"),
+            nombre="Manager",
+            activo=True,
+            aprobado=True,
+            puede_gestionar_sistema=True,
+            rol="admin_sistema",
+        )
+        db_session.add(manager)
+        db_session.commit()
+
+        response = client.post("/usuarios", headers=get_auth_header("manager-create@test.com"), json={
+            "nombre": "Nuevo Usuario",
+            "email": "nuevo@test.com",
+            "password": "newpassword456",
+            "rol": "gestion",
+        })
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["email"] == "nuevo@test.com"
+        assert data["aprobado"] is True
+
+
 class TestUsuariosPendientes:
 
     def test_list_pendientes_solo_gestores(self, monkeypatch, client, db_session):
@@ -336,3 +366,30 @@ class TestAdminResetPassword:
             "password": "newpassword456"
         })
         assert response.status_code == 404
+
+
+class TestPreferenciasUsuario:
+
+    def test_usuario_puede_guardar_sus_preferencias(self, monkeypatch, client, db_session):
+        monkeypatch.setattr("app.auth.AUTH_ENABLED", True)
+        user = Usuario(
+            email="prefs@test.com",
+            hashed_password=hash_password("pass"),
+            nombre="Prefs",
+            activo=True,
+            aprobado=True,
+            rol="gestion",
+        )
+        db_session.add(user)
+        db_session.commit()
+
+        response = client.patch("/usuarios/me/preferencias", headers=get_auth_header("prefs@test.com"), json={
+            "sidebarCollapsed": True,
+        })
+
+        assert response.status_code == 200
+        assert response.json()["sidebarCollapsed"] is True
+
+        response = client.get("/usuarios/me/preferencias", headers=get_auth_header("prefs@test.com"))
+        assert response.status_code == 200
+        assert response.json()["sidebarCollapsed"] is True

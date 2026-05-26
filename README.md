@@ -11,7 +11,7 @@ Aplicación web interna para controlar presupuestos creados en FactuSOL y evitar
 - Alembic integrado en el arranque Docker (`alembic upgrade head`).
 - Tests automáticos de reglas críticas y rate limit.
 - Rate limit en login por IP/email.
-- Recuperación de contraseña por email y reset manual desde panel de usuarios.
+- Reset manual de contraseña desde panel de usuarios.
 - Mi mesa de trabajo usa el usuario real autenticado.
 - Importación Excel/CSV avanzada: simular, crear nuevos, actualizar existentes y upsert seguro por versión.
 - Logs filtrables por estado, tipo, usuario, presupuesto y fechas.
@@ -34,13 +34,13 @@ Abrir:
 http://localhost:8088
 ```
 
-API docs vía proxy interno:
+API docs vía proxy interno en desarrollo:
 
 ```text
 http://localhost:8088/api/docs
 ```
 
-El backend ya no se publica en `localhost:8000` por defecto. Si necesitas depurar, añade temporalmente un `ports` al servicio `backend`.
+En producción las API docs están desactivadas. El backend ya no se publica en `localhost:8000` por defecto. Si necesitas depurar, añade temporalmente un `ports` al servicio `backend`.
 
 ## Primer usuario
 
@@ -54,9 +54,15 @@ El backend ya no se publica en `localhost:8000` por defecto. Si necesitas depura
   - resetear contraseñas;
   - conceder/quitar gestión del sistema.
 
-## Recuperación de contraseña
+## Reset de contraseña
 
-Configura SMTP y `APP_PUBLIC_URL` en `.env`:
+El reset de contraseña lo realiza un usuario con gestión del sistema desde:
+
+```text
+Usuarios → Reset clave
+```
+
+Si usas avisos por email, configura SMTP y `APP_PUBLIC_URL` en `.env`:
 
 ```env
 APP_PUBLIC_URL=https://presucontrol.tuempresa.com
@@ -66,18 +72,6 @@ SMTP_USER=avisos@tuempresa.com
 SMTP_PASSWORD=tu_password_o_app_password
 SMTP_FROM=avisos@tuempresa.com
 SMTP_TLS=true
-```
-
-El usuario puede entrar en:
-
-```text
-/login → He olvidado mi contraseña
-```
-
-También se puede resetear manualmente desde:
-
-```text
-Usuarios → Reset clave
 ```
 
 ## Migraciones
@@ -162,10 +156,12 @@ Preparación inicial:
 ```bash
 cp .env.production.example .env
 nano .env
-docker compose build
-docker compose up -d
-docker compose ps
+docker compose -f docker-compose.prod.yml build
+docker compose -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.prod.yml ps
 ```
+
+En Coolify usa un recurso **Docker Compose** apuntando a `docker-compose.prod.yml`. No uses un despliegue de aplicación con Dockerfile raíz: este proyecto tiene frontend, backend y PostgreSQL como servicios separados.
 
 Comprueba que la app responde por el proxy local:
 
@@ -272,8 +268,6 @@ Si la migración ya modificó datos, restaura el último backup verificado antes
 ```text
 GET  /sidebar-counters
 GET  /search?q=texto
-POST /auth/password/request
-POST /auth/password/reset
 POST /usuarios/{id}/toggle-gestion
 POST /usuarios/{id}/reset-password
 GET  /logs/emails/export
