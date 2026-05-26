@@ -198,6 +198,7 @@ def ensure_schema_compatibility():
         conn.execute(text("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS aprobado_por VARCHAR(255)"))
         conn.execute(text("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS puede_gestionar_sistema BOOLEAN NOT NULL DEFAULT FALSE"))
         conn.execute(text("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS rol VARCHAR(40) NOT NULL DEFAULT 'gestion'"))
+        conn.execute(text("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS preferencias JSON"))
         conn.execute(text("UPDATE usuarios SET rol = CASE WHEN puede_gestionar_sistema THEN 'admin_sistema' ELSE 'gestion' END WHERE rol IS NULL OR rol NOT IN ('admin_sistema', 'gestion')"))
         conn.execute(text("ALTER TABLE email_notification_logs ADD COLUMN IF NOT EXISTS escalation_level INTEGER NOT NULL DEFAULT 0"))
 
