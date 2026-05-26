@@ -210,7 +210,7 @@ if os.getenv("RUN_DEFENSIVE_MIGRATIONS", "true").lower() in {"1", "true", "yes",
 PUBLIC_PATHS = get_public_paths()
 
 
-# Temporary debug: expose raw errors
+# Temporary debug: expose raw errors and auto-fix DB
 import traceback
 @app.get("/debug/db-test")
 def debug_db_test(db: Session = Depends(get_db)):
@@ -219,7 +219,37 @@ def debug_db_test(db: Session = Depends(get_db)):
         count = db.query(Usuario).count()
         return {"ok": True, "user_count": count}
     except Exception as e:
-        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+        # Auto-fix: add missing columns
+        with engine.begin() as conn:
+            for stmt in [
+                "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS preferencias JSON",
+                "ALTER TABLE comentarios ADD COLUMN IF NOT EXISTS usuario_id INTEGER",
+                "ALTER TABLE comentarios ADD COLUMN IF NOT EXISTS usuario_nombre VARCHAR(120)",
+                "ALTER TABLE comentarios ADD COLUMN IF NOT EXISTS usuario_email VARCHAR(255)",
+                "ALTER TABLE historial_cambios ADD COLUMN IF NOT EXISTS usuario_id INTEGER",
+                "ALTER TABLE historial_cambios ADD COLUMN IF NOT EXISTS usuario_nombre VARCHAR(120)",
+                "ALTER TABLE historial_cambios ADD COLUMN IF NOT EXISTS usuario_email VARCHAR(255)",
+                "ALTER TABLE presupuestos ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1",
+                "ALTER TABLE presupuestos ADD COLUMN IF NOT EXISTS archivado BOOLEAN NOT NULL DEFAULT FALSE",
+                "ALTER TABLE presupuestos ADD COLUMN IF NOT EXISTS archivado_en TIMESTAMP WITH TIME ZONE",
+                "ALTER TABLE presupuestos ADD COLUMN IF NOT EXISTS archivado_por VARCHAR(255)",
+                "ALTER TABLE presupuestos ADD COLUMN IF NOT EXISTS motivo_archivado TEXT",
+                "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS aprobado BOOLEAN NOT NULL DEFAULT TRUE",
+                "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS aprobado_en TIMESTAMP WITH TIME ZONE",
+                "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS aprobado_por VARCHAR(255)",
+                "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS puede_gestionar_sistema BOOLEAN NOT NULL DEFAULT FALSE",
+                "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS rol VARCHAR(40) NOT NULL DEFAULT 'gestion'",
+                "ALTER TABLE email_notification_logs ADD COLUMN IF NOT EXISTS escalation_level INTEGER NOT NULL DEFAULT 0",
+            ]:
+                try:
+                    conn.execute(text(stmt))
+                except Exception:
+                    pass
+        try:
+            count = db.query(Usuario).count()
+            return {"ok": True, "user_count": count, "fixed": True}
+        except Exception as e2:
+            return {"ok": False, "error": str(e2), "original_error": str(e), "traceback": traceback.format_exc()}
 
 
 @app.middleware("http")
