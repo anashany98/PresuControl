@@ -42,28 +42,28 @@ def seed_demo():
         PROVEEDORES = ['Suministros del Norte SL', 'Materiales Lopez SA', 'Ferreteria Central']
         GESTORES = ['Ana Garcia', 'Carlos Lopez', 'Maria Rodriguez', 'Pedro Sanchez']
         rows = [
-            ('PRE-2024-001',CLIENTES[0][0],CLIENTES[0][1],'Enviado','Rojo',-15,'Ana Garcia','Compras',ACCIONES[0]),
-            ('PRE-2024-002',CLIENTES[1][0],CLIENTES[1][1],'Enviado','Rojo',-8,'Carlos Lopez','Comercial',ACCIONES[1]),
-            ('PRE-2024-003',CLIENTES[2][0],CLIENTES[2][1],'Aceptado','Amarillo',-3,'Maria Rodriguez','Administracion',ACCIONES[2]),
-            ('PRE-2024-004',CLIENTES[3][0],CLIENTES[3][1],'Enviado','Rojo',0,'Pedro Sanchez','Comercial',ACCIONES[3]),
-            ('PRE-2024-005',CLIENTES[4][0],CLIENTES[4][1],'Enviado','Amarillo',0,'Ana Garcia','Compras',ACCIONES[4]),
-            ('PRE-2024-006',CLIENTES[5][0],CLIENTES[5][1],'Aceptado','Verde',0,'Carlos Lopez',None,None),
-            ('PRE-2024-007',CLIENTES[6][0],CLIENTES[6][1],'Enviado','Amarillo',1,'Maria Rodriguez','Comercial',ACCIONES[0]),
-            ('PRE-2024-008',CLIENTES[7][0],CLIENTES[7][1],'Enviado','Verde',1,'Pedro Sanchez','Almacen',ACCIONES[1]),
-            ('PRE-2024-009',CLIENTES[8][0],CLIENTES[8][1],'Enviado','Verde',2,'Ana Garcia','Comercial',ACCIONES[2]),
-            ('PRE-2024-010',CLIENTES[9][0],CLIENTES[9][1],'Enviado','Amarillo',2,'Carlos Lopez','Compras',ACCIONES[3]),
-            ('PRE-2024-011','Construcciones del Norte','Obra concluida','Cerrado','Verde',-30,'Ana Garcia',None,None),
-            ('PRE-2024-012','Hosteleria Costa Brava','Esperando materiales','Aceptado','Amarillo',-45,'Maria Rodriguez','Almacen',ACCIONES[1]),
-            ('PRE-2024-013','Inmobiliaria del Valle','Proyecto en pausa','Bloqueado','Rojo',-60,'Pedro Sanchez','Compras',ACCIONES[2]),
-            ('PRE-2024-014','Oficina Tecnica Mediterraneo','Pendiente de cliente','Enviado','Verde',-90,'Carlos Lopez',None,None),
-            ('PRE-2024-015','Automatizaciones Industriales','Aceptado hace 2 semanas','Aceptado','Verde',-14,'Ana Garcia',None,None),
+            ('PRE-2024-001',CLIENTES[0][0],CLIENTES[0][1],'Enviado al cliente','Rojo',-15,'Ana Garcia','Compras',ACCIONES[0]),
+            ('PRE-2024-002',CLIENTES[1][0],CLIENTES[1][1],'Enviado al cliente','Rojo',-8,'Carlos Lopez','Comercial',ACCIONES[1]),
+            ('PRE-2024-003',CLIENTES[2][0],CLIENTES[2][1],'Aceptado - pendiente pedido proveedor','Amarillo',-3,'Maria Rodriguez','Administracion',ACCIONES[2]),
+            ('PRE-2024-004',CLIENTES[3][0],CLIENTES[3][1],'Enviado al cliente','Rojo',0,'Pedro Sanchez','Comercial',ACCIONES[3]),
+            ('PRE-2024-005',CLIENTES[4][0],CLIENTES[4][1],'Enviado al cliente','Amarillo',0,'Ana Garcia','Compras',ACCIONES[0]),
+            ('PRE-2024-006',CLIENTES[5][0],CLIENTES[5][1],'Aceptado - pendiente pedido proveedor','Verde',0,'Carlos Lopez',None,None),
+            ('PRE-2024-007',CLIENTES[6][0],CLIENTES[6][1],'Enviado al cliente','Amarillo',1,'Maria Rodriguez','Comercial',ACCIONES[0]),
+            ('PRE-2024-008',CLIENTES[7][0],CLIENTES[7][1],'Enviado al cliente','Verde',1,'Pedro Sanchez','Almacen',ACCIONES[1]),
+            ('PRE-2024-009',CLIENTES[8][0],CLIENTES[8][1],'Enviado al cliente','Verde',2,'Ana Garcia','Comercial',ACCIONES[2]),
+            ('PRE-2024-010',CLIENTES[9][0],CLIENTES[9][1],'Enviado al cliente','Amarillo',2,'Carlos Lopez','Compras',ACCIONES[3]),
+            ('PRE-2024-011','Construcciones del Norte','Obra concluida','Entregado / cerrado','Verde',-30,'Ana Garcia',None,None),
+            ('PRE-2024-012','Hosteleria Costa Brava','Esperando materiales','Aceptado - pendiente pedido proveedor','Amarillo',-45,'Maria Rodriguez','Almacen',ACCIONES[1]),
+            ('PRE-2024-013','Inmobiliaria del Valle','Proyecto en pausa','Bloqueado / incidencia','Rojo',-60,'Pedro Sanchez','Compras',ACCIONES[2]),
+            ('PRE-2024-014','Oficina Tecnica Mediterraneo','Pendiente de cliente','Enviado al cliente','Verde',-90,'Carlos Lopez',None,None),
+            ('PRE-2024-015','Automatizaciones Industriales','Aceptado hace 2 semanas','Aceptado - pendiente pedido proveedor','Verde',-14,'Ana Garcia',None,None),
         ]
         for numero, cliente, obra, estado, prioridad, dias_offset, gestor, responsable, accion in rows:
             fecha_presupuesto = hoy - timedelta(days=random.randint(30,120))
             fecha_limite = hoy + timedelta(days=dias_offset)
             fecha_envio = fecha_presupuesto + timedelta(days=random.randint(3,15))
             fecha_aceptacion = None
-            if estado in ('Aceptado','Cerrado'):
+            if 'Aceptado' in estado or 'Entregado' in estado:
                 fecha_aceptacion = fecha_envio + timedelta(days=random.randint(5,20))
             dias_parado = abs(dias_offset) if dias_offset < 0 else 0
             p = Presupuesto(numero_presupuesto=numero, cliente=cliente, obra_referencia=obra,

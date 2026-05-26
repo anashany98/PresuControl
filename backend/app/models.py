@@ -142,8 +142,6 @@ class Usuario(Base):
     aprobado_por: Mapped[str | None] = mapped_column(String(255), nullable=True)
     puede_gestionar_sistema: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
     rol: Mapped[str] = mapped_column(String(40), nullable=False, default="gestion", server_default="gestion", index=True)
-    reset_password_token_hash: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
-    reset_password_expira_en: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     creado_en: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     ultimo_login: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     preferencias: Mapped[dict | None] = mapped_column(JSON, nullable=True)
@@ -182,16 +180,6 @@ class RegistrationAttempt(Base):
     ip: Mapped[str] = mapped_column(String(45), nullable=False, unique=True)
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     window_start: Mapped[DateTime] = mapped_column(DateTime(timezone=True), nullable=False)
-
-
-class PasswordResetAttempt(Base):
-    """Rate limiting for password reset endpoint to prevent email enumeration."""
-    __tablename__ = "password_reset_attempts"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    ip: Mapped[str] = mapped_column(String(45), nullable=False, unique=True, index=True)
-    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
-    window_start: Mapped[DateTime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
 
 
 class InAppNotification(Base):

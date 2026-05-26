@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { AlertTriangle, Euro, TrendingUp } from 'lucide-react'
 import { PageHeader } from '../components/PageHeader'
+import { EmptyState } from '../components/EmptyState'
 import { StatCard } from '../components/StatCard'
 import { PriorityBadge, StateBadge } from '../components/Badges'
 import { api, euro, type Presupuesto } from '../utils/api'
@@ -40,7 +41,7 @@ export function DineroRiesgo() {
           </div>
         </div>
         <div className="compact-list">
-          {!bucket.items.length && <p className="muted">Sin registros.</p>}
+          {!bucket.items.length && <EmptyState icon={Euro} title={`Sin ${bucket.label.toLowerCase()}`} description="No hay presupuestos en esta categoría de riesgo." />}
           {bucket.items.map(p => <Link to={`/presupuestos/${p.id}`} className="compact-row" key={`${key}-${p.id}`}>
             <div>
               <strong>{p.numero_presupuesto} · {p.cliente}</strong>

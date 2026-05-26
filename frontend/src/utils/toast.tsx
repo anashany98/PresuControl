@@ -3,11 +3,11 @@ import { CheckCircle2, AlertCircle, X } from 'lucide-react'
 
 type ToastType = 'success' | 'error' | 'info'
 
-type Toast = { id: number; message: string; type: ToastType; timeoutId: ReturnType<typeof setTimeout> }
+type Toast = { id: number; message: string; type: ToastType; timeoutId: ReturnType<typeof setTimeout>; action?: { label: string; onClick: () => void } }
 
 type ToastCtx = {
-  show: (message: string, type?: ToastType) => void
-  success: (message: string) => void
+  show: (message: string, type?: ToastType, action?: { label: string; onClick: () => void }) => void
+  success: (message: string, action?: { label: string; onClick: () => void }) => void
   error: (message: string) => void
 }
 
@@ -22,10 +22,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     setToasts(t => t.filter(x => x.id !== id))
   }, [])
 
-  const show = useCallback((message: string, type: ToastType = 'info') => {
+  const show = useCallback((message: string, type: ToastType = 'info', action?: { label: string; onClick: () => void }) => {
     const id = ++toastId
-    const timeoutId = setTimeout(() => remove(id), 4000)
-    setToasts(t => [...t, { id, message, type, timeoutId }])
+    const timeoutId = setTimeout(() => remove(id), 5000)
+    setToasts(t => [...t, { id, message, type, timeoutId, action }])
   }, [remove])
 
   // Cleanup timeouts on unmount
@@ -36,7 +36,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   }, [toasts])
 
   return (
-    <ToastContext.Provider value={{ show, success: (m) => show(m, 'success'), error: (m) => show(m, 'error') }}>
+    <ToastContext.Provider value={{ show, success: (m, a) => show(m, 'success', a), error: (m) => show(m, 'error') }}>
       {children}
       <div className="toast-container">
         {toasts.map(t => (
@@ -45,6 +45,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             {t.type === 'error' && <AlertCircle size={16}/>}
             {t.type === 'info' && <AlertCircle size={16}/>}
             <span>{t.message}</span>
+            {t.action && <button className="toast-action" onClick={() => { clearTimeout(t.timeoutId); remove(t.id); t.action!.onClick() }}>{t.action.label}</button>}
             <button onClick={() => { clearTimeout(t.timeoutId); remove(t.id) }}><X size={14}/></button>
           </div>
         ))}

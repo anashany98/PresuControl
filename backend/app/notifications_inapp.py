@@ -1,5 +1,5 @@
 from __future__ import annotations
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 from sqlalchemy.orm import Session
 from .models import InAppNotification
@@ -65,5 +65,14 @@ def marcar_todas_leidas(db: Session, user_id: int | None) -> int:
         InAppNotification.user_id == user_id,
         InAppNotification.leida.is_(False),
     ).update({InAppNotification.leida: True})
+    db.commit()
+    return count
+
+def limpiar_notificaciones_antiguas(db: Session, dias: int = 30) -> int:
+    desde = datetime.now(timezone.utc) - timedelta(days=dias)
+    count = db.query(InAppNotification).filter(
+        InAppNotification.leida.is_(True),
+        InAppNotification.creado_en < desde,
+    ).delete()
     db.commit()
     return count

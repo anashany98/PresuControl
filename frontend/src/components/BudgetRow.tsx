@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { type Presupuesto } from '../utils/api'
 import { PRIORITY_COLOR } from '../utils/tokens'
 import { euro } from '../utils/api'
+import { PedidoSummaryBadge } from './PedidoSummary'
 
 interface BudgetRowProps {
   item: Presupuesto
@@ -83,12 +84,32 @@ export function BudgetRow({ item }: BudgetRowProps) {
         </div>
       </div>
 
-      {/* Bottom row: obra_referencia */}
-      <div className="flex justify-between items-center mt-1 pl-3">
+      {/* Bottom row: obra_referencia + pedidos */}
+      <div className="flex justify-between items-center mt-1 pl-3 gap-2">
         <span className="text-xs text-ink-muted truncate">
           {item.obra_referencia || 'Sin obra'}
         </span>
+        {(item.pedidos?.length || 0) > 0 && (
+          <div className="flex-shrink-0">
+            <PedidoSummaryBadge presupuesto={item} variant="mini" />
+          </div>
+        )}
       </div>
+      {/* Pedidos detail row */}
+      {(item.pedidos?.length || 0) > 0 && (
+        <div className="pl-3 mt-0.5">
+          {item.pedidos!.filter(p => p.estado_entrega !== 'completado').slice(0, 2).map((p, i) => (
+            <span key={i} className="text-xs text-ink-muted mr-3">
+              📦 {p.proveedor?.slice(0, 15)}{p.proveedor && p.proveedor.length > 15 ? '…' : ''}
+              {!p.fecha_entrega_prevista && ' · ⚠️ sin fecha'}
+              {p.fecha_entrega_prevista && ' · ' + new Date(p.fecha_entrega_prevista).toLocaleDateString('es-ES', {day:'2-digit', month:'2-digit'})}
+            </span>
+          ))}
+          {item.pedidos!.filter(p => p.estado_entrega !== 'completado').length > 2 && (
+            <span className="text-xs text-ink-muted">+{item.pedidos!.filter(p => p.estado_entrega !== 'completado').length - 2} más</span>
+          )}
+        </div>
+      )}
     </Link>
   )
 }

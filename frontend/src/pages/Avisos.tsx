@@ -3,6 +3,7 @@ import { Bell, CheckCircle, Clock, Mail, PlayCircle, Send, Settings } from 'luci
 import { Link } from 'react-router-dom'
 import { PageHeader } from '../components/PageHeader'
 import { PriorityBadge } from '../components/Badges'
+import { EmptyState } from '../components/EmptyState'
 import { api, type Presupuesto } from '../utils/api'
 import { useData } from '../utils/useData'
 
@@ -52,14 +53,14 @@ export function Avisos() {
       <button className={`detail-tab ${tab === 'activos' ? 'active' : ''}`} onClick={() => setTab('activos')}>Avisos activos ({data?.length || 0})</button>
       <button className={`detail-tab ${tab === 'historial' ? 'active' : ''}`} onClick={() => setTab('historial')}>Historial</button>
     </div>
-    {loading ? <div className="card">Cargando avisos...</div> : tab === 'activos' ? <div className="compact-list">
-      {!(data || []).length && <div className="card">No hay avisos activos.</div>}
+    {loading ? <div className="card">Cargando avisos...</div> : tab === 'activos' ? <>
+      {!(data || []).length && <EmptyState icon={Bell} title="Sin avisos activos" description="No hay presupuestos que requieran atención ahora. ¡Todo bajo control!" />}
       {(data || []).map((a, idx) => <Link className="compact-row" to={`/presupuestos/${a.presupuesto.id}`} key={idx}>
         <div><strong><Bell size={14}/> {a.tipo}</strong><span>{a.presupuesto.numero_presupuesto} · {a.presupuesto.cliente} · {a.presupuesto.siguiente_accion || 'Sin acción'}</span></div>
         <PriorityBadge value={a.presupuesto.prioridad_calculada}/>
       </Link>)}
-    </div> : <div className="compact-list">
-      {!(historyData || []).length && <div className="card">No hay historial de avisos.</div>}
+    </> : <div className="compact-list">
+      {!(historyData || []).length && <EmptyState icon={Clock} title="Sin historial" description="Aún no se ha enviado ningún aviso por email." />}
       {(historyData || []).map((h) => <div className="compact-row" key={h.id}>
         <div><strong>{h.tipo}</strong><span>{h.numero_presupuesto} · {h.cliente}</span></div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

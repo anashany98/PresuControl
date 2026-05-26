@@ -128,6 +128,7 @@ export type Settings = {
   dias_aviso_pedido_sin_plazo: number
   email_avisos_activo: boolean
   emails_destino_avisos: string[]
+  gestores_emails: Record<string, string>
   enviar_email_criticos_inmediato: boolean
   asunto_email_avisos: string
   avisos_automaticos_activos: boolean
@@ -145,6 +146,8 @@ export type Settings = {
   smtp_configured: boolean
   smtp_host: string
   smtp_port: number
+  smtp_user: string
+  smtp_password: string
   smtp_from: string
   smtp_tls: boolean
 }

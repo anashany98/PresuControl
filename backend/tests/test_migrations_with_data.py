@@ -22,7 +22,7 @@ def test_models_match_alembic_schema(db_session):
     expected_tables = {
         "presupuestos", "pedidos_proveedor", "comentarios", "historial_cambios",
         "app_settings", "usuarios", "email_notification_logs", "login_attempts",
-        "registration_attempts", "password_reset_attempts", "in_app_notifications",
+        "registration_attempts", "in_app_notifications",
         "proveedores", "evaluaciones_proveedor", "presupuestos_proveedores",
     }
     missing = expected_tables - set(inspector_data)

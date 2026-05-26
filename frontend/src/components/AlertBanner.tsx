@@ -28,7 +28,7 @@ export function AlertBanner({ alerta }: AlertBannerProps) {
       }}
     >
       <div className="flex-1">
-        <p className="text-sm font-semibold" style={{ color: isCritico ? '#dc2626' : '#f97316' }}>
+        <p className="text-sm font-semibold truncate" style={{ color: isCritico ? '#dc2626' : '#f97316' }}>
           {alerta.mensaje}
         </p>
       </div>

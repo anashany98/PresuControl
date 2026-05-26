@@ -157,8 +157,10 @@ def active_rows_with_risk(db: Session, include_pedidos: bool = False) -> tuple[l
     return rows, pedido_counts
 
 
-def build_dashboard_payload(db: Session) -> dict[str, Any]:
+def build_dashboard_payload(db: Session, gestor: str | None = None) -> dict[str, Any]:
     rows, _pedido_counts = active_rows_with_risk(db)
+    if gestor:
+        rows = [row for row in rows if row.gestor == gestor]
     current_month = date.today().replace(day=1)
     active = [row for row in rows if row.estado not in CLOSED_STATES]
     accepted_no_order = [row for row in rows if row.fecha_aceptacion and not row.pedido_proveedor_realizado]
@@ -433,8 +435,10 @@ def get_report_rows(
     return sorted(rows, key=lambda row: (row.fecha_limite_siguiente_accion or date.max, row.numero_presupuesto))
 
 
-def build_executive_dashboard_payload(db: Session) -> dict[str, Any]:
+def build_executive_dashboard_payload(db: Session, gestor: str | None = None) -> dict[str, Any]:
     rows, _pedido_counts = active_rows_with_risk(db)
+    if gestor:
+        rows = [row for row in rows if row.gestor == gestor]
     today = date.today()
     current_month = today.replace(day=1)
     active = [row for row in rows if row.estado not in CLOSED_STATES]

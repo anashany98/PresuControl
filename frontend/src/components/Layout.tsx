@@ -1,5 +1,5 @@
 import { Outlet, useNavigate } from 'react-router-dom'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import {
   BarChart3, Bell, CalendarDays, CheckSquare,
   ClipboardClock, ClipboardList, Euro, FilePlus2,
@@ -10,9 +10,11 @@ import { isSystemAdmin, useAuth } from '../utils/auth'
 import { api, type SidebarCounters } from '../utils/api'
 import { useData } from '../utils/useData'
 import { KeyboardShortcutsModal, useKeyboardShortcuts } from './KeyboardShortcuts'
-import type { NavSection } from './Sidebar'
+import { NotifPanel } from './NotifPanel'
+import { ActivityPanel } from './ActivityPanel'
 import { Topbar } from './Topbar'
 import { BottomTabs, MobileDrawer } from './MobileNav'
+import type { NavSection } from './Sidebar'
 
 // ── Navigation configuration ──
 const sections: NavSection[] = [
@@ -43,9 +45,6 @@ const sections: NavSection[] = [
   {
     label: 'Gestión',
     links: [
-      { to: '/informes',       label: 'Informes',       icon: BarChart3 },
-      { to: '/importar',       label: 'Importar',       icon: UploadCloud },
-      { to: '/avisos',         label: 'Avisos',         icon: Bell },
       { to: '/notificaciones', label: 'Notificaciones', icon: Bell, counter: 'notificaciones_sin_leer' },
     ],
   },
@@ -53,6 +52,9 @@ const sections: NavSection[] = [
     label: 'Sistema',
     adminOnly: true,
     links: [
+      { to: '/informes',       label: 'Informes',       icon: BarChart3 },
+      { to: '/importar',       label: 'Importar',       icon: UploadCloud },
+      { to: '/avisos',         label: 'Avisos',         icon: Bell },
       { to: '/usuarios',       label: 'Usuarios',       icon: UserCheck,  counter: 'usuarios_pendientes' },
       { to: '/configuracion',  label: 'Configuración',  icon: Settings },
       { to: '/logs',           label: 'Logs',           icon: ClipboardList },
@@ -73,11 +75,37 @@ export function Layout() {
   const isAdmin = isSystemAdmin(user)
   const visibleSections = sections.filter(s => !s.adminOnly || isAdmin)
 
+  const gKeyRef = useRef(false)
+  const [notifPanel, setNotifPanel] = useState(false)
+  const [activityPanel, setActivityPanel] = useState(false)
+
   // Keyboard shortcuts
   useEffect(() => {
     function handleKeydown(e: KeyboardEvent) {
       const tag = (e.target as HTMLElement)?.tagName
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+
+      // g + letter shortcuts (vim-style)
+      if (e.key === 'g' && !e.ctrlKey && !e.metaKey) {
+        gKeyRef.current = true
+        setTimeout(() => { gKeyRef.current = false }, 500)
+        return
+      }
+      if (gKeyRef.current) {
+        e.preventDefault()
+        if (e.key === 'd') navigate('/')
+        else if (e.key === 'k') navigate('/kanban')
+        else if (e.key === 'p') navigate('/presupuestos')
+        else if (e.key === 't') navigate('/mi-trabajo')
+        gKeyRef.current = false
+        return
+      }
+
+      // ? to show keyboard shortcuts
+      if (e.key === '?' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault()
+        setKbOpen(true)
+      }
       if (e.key === '/' && !e.ctrlKey && !e.metaKey) {
         e.preventDefault()
         document.querySelector<HTMLInputElement>('.topbar-search input')?.focus()
@@ -102,6 +130,9 @@ export function Layout() {
         sections={visibleSections}
         counters={(counters.data as any) || {}}
         onMenuClick={() => setSidebarOpen(true)}
+        onNotifClick={() => setNotifPanel(!notifPanel)}
+        isAdmin={isAdmin}
+        onActivityClick={() => setActivityPanel(!activityPanel)}
       />
 
       {/* ── Page Content ── */}
@@ -125,6 +156,12 @@ export function Layout() {
 
       {/* ── Keyboard Shortcuts Modal ── */}
       <KeyboardShortcutsModal open={kbOpen} onClose={() => setKbOpen(false)} />
+
+      {/* ── Notifications Slide-over ── */}
+      <NotifPanel open={notifPanel} onClose={() => setNotifPanel(false)} />
+
+      {/* ── Activity Panel ── */}
+      <ActivityPanel open={activityPanel} onClose={() => setActivityPanel(false)} isAdmin={isAdmin} />
     </div>
   )
 }

@@ -1,7 +1,7 @@
 import { type FormEvent, type ReactNode, useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { Gauge, Loader2, LogIn } from 'lucide-react'
-import { useAuth } from '../utils/auth'
+import { isSystemAdmin, useAuth } from '../utils/auth'
 
 export function Login() {
   const { user, login } = useAuth()
@@ -11,7 +11,7 @@ export function Login() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [showPw, setShowPw] = useState(false)
-  if (user) return <Navigate to="/" replace />
+  if (user) return <Navigate to={isSystemAdmin(user) ? '/' : '/mi-trabajo'} replace />
   async function submit(e: FormEvent) {
     e.preventDefault(); setError(null); setLoading(true)
     try { await login(email, password); navigate('/') }
@@ -25,7 +25,6 @@ export function Login() {
       <label>Contraseña<input className="input" type={showPw ? "text" : "password"} aria-label="Contraseña" value={password} onChange={e => setPassword(e.target.value)} required /></label>
       <button className="btn" type="submit" disabled={loading}>{loading ? <><Loader2 size={16} className="spin" /> Entrando...</> : <><LogIn size={16} /> Entrar</>}</button>
       <p className="muted">¿No tienes cuenta? <Link to="/registro"><strong>Crear registro</strong></Link></p>
-      <p className="muted"><Link to="/forgot-password"><strong>He olvidado mi contraseña</strong></Link></p>
     </form>
   </AuthShell>
 }

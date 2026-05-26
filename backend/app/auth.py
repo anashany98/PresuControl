@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import re
-import hashlib
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -36,10 +35,6 @@ def hash_password(password: str) -> str:
 
 def verify_password(password: str, hashed_password: str) -> bool:
     return bcrypt.checkpw(password.encode("utf-8"), hashed_password.encode("utf-8"))
-
-
-def hash_reset_token(token: str) -> str:
-    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 def create_access_token(subject: str, extra: dict[str, Any] | None = None) -> str:

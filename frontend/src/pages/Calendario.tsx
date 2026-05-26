@@ -48,9 +48,10 @@ function formatDateISO(d: Date): string {
 export function Calendario() {
   const { data, loading, error } = useData<Presupuesto[]>(() => api.get('/presupuestos?limit=2000'), [])
   const [current, setCurrent] = useState(() => new Date())
-  const [view, setView] = useState<'mes' | 'semana'>('mes')
+  const [view, setView] = useState<'mes' | 'semana' | 'agenda'>('mes')
   const [selectedDay, setSelectedDay] = useState<Date | null>(null)
   const [modalPresupuesto, setModalPresupuesto] = useState<Presupuesto | null>(null)
+  const [activeFilters, setActiveFilters] = useState<Record<string, boolean>>({ limite: true, plazo: true, entrega: true, enviado: true })
 
   const year = current.getFullYear()
   const month = current.getMonth()
@@ -62,9 +63,17 @@ export function Calendario() {
       if (p.plazo_proveedor) result.push({ date: p.plazo_proveedor, type: 'Plazo proveedor', tipo: 'plazo', p })
       if (p.fecha_prevista_entrega) result.push({ date: p.fecha_prevista_entrega, type: 'Entrega prevista', tipo: 'entrega', p })
       if (p.estado === 'Enviado al cliente' && p.fecha_envio_cliente) result.push({ date: p.fecha_envio_cliente, type: 'Enviado sin respuesta', tipo: 'enviado', p })
+      // Pedido-level events: each pedido can have its own fecha_entrega_prevista
+      if (p.pedidos) {
+        for (const pedido of p.pedidos) {
+          if (pedido.fecha_entrega_prevista && pedido.estado_entrega !== 'completado') {
+            result.push({ date: pedido.fecha_entrega_prevista, type: `📦 ${pedido.proveedor || 'Pedido'}`, tipo: 'entrega', p })
+          }
+        }
+      }
       return result
-    })
-  }, [data])
+    }).filter(e => activeFilters[e.tipo] !== false)
+  }, [data, activeFilters])
 
   const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`
   const monthEvents = useMemo(() => events.filter(e => e.date.startsWith(monthKey)), [events, monthKey])
@@ -152,14 +161,21 @@ export function Calendario() {
                 <CalendarDays size={15}/>
                 Semana
               </button>
+              <button
+                className={`cal-btn cal-btn-view ${view === 'agenda' ? 'active' : ''}`}
+                onClick={() => setView('agenda')}
+              >
+                <CalendarDays size={15}/>
+                Agenda
+              </button>
             </div>
           </div>
 
           <div className="cal-legend">
             {Object.entries(EVENT_LABELS).map(([k, v]) => (
-              <span key={k} className="cal-legend-item">
+              <span key={k} className="cal-legend-item" onClick={() => setActiveFilters(f => ({ ...f, [k]: !f[k] }))} style={{ cursor: 'pointer', opacity: activeFilters[k] ? 1 : 0.4 }}>
                 <span className="cal-legend-dot" style={{background: EVENT_COLORS[k].badge}}/>
-                {v}
+                {v} {activeFilters[k] ? '' : '(oculto)'}
               </span>
             ))}
           </div>
@@ -259,6 +275,30 @@ evs.map((e, i) => (
                 </div>
               )}
             </div>
+
+            {/* ── Agenda View ── */}
+            {view === 'agenda' && (
+              <div className="cal-agenda" style={{ maxHeight: 'calc(100vh - 200px)', overflowY: 'auto' }}>
+                {(() => {
+                  const filtered = events.filter(e => activeFilters[e.tipo] !== false && e.date.startsWith(monthKey)).sort((a, b) => a.date.localeCompare(b.date))
+                  if (filtered.length === 0) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)' }}>Sin eventos en {monthName.toLowerCase()}</div>
+                  return filtered.map((e, i) => (
+                    <div key={i} className="cal-agenda-item" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
+                      <div style={{ minWidth: 80, textAlign: 'right' }}>
+                        <div style={{ fontWeight: 700, fontSize: 14 }}>{new Date(e.date).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}</div>
+                        <div style={{ fontSize: 11, color: 'var(--muted)' }}>{new Date(e.date).toLocaleDateString('es-ES', { weekday: 'short' })}</div>
+                      </div>
+                      <span style={{ background: EVENT_COLORS[e.tipo].badge, color: 'white', padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600, minWidth: 70, textAlign: 'center' }}>{e.type}</span>
+                      <div style={{ flex: 1 }}>
+                        <Link to={`/presupuestos/${e.p.id}`} style={{ fontWeight: 600, color: 'var(--text)', textDecoration: 'none' }}>{e.p.numero_presupuesto}</Link>
+                        <span style={{ marginLeft: 8, color: 'var(--muted)' }}>{e.p.cliente}</span>
+                      </div>
+                      <span style={{ fontWeight: 600 }}>{euro(e.p.importe)}</span>
+                    </div>
+                  ))
+                })()}
+              </div>
+            )}
 
             {selectedDay && selectedEvents.length > 0 && (
               <div className="cal-side-panel">

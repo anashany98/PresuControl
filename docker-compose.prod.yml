@@ -1,0 +1,68 @@
+# PresuControl V5 - Coolify Production Deploy
+# Use this with Coolify's Docker Compose service type.
+# Environment variables are managed through Coolify's UI.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: presucontrol-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-presucontrol}
+      POSTGRES_USER: ${POSTGRES_USER:-presucontrol}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - presucontrol_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-presucontrol} -d ${POSTGRES_DB:-presucontrol}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    container_name: presucontrol-backend
+    restart: unless-stopped
+    environment:
+      ENV: ${ENV:-production}
+      DATABASE_URL: ${DATABASE_URL}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-20}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-30}
+      DB_POOL_TIMEOUT: ${DB_POOL_TIMEOUT:-30}
+      DB_POOL_RECYCLE: ${DB_POOL_RECYCLE:-3600}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      AUTH_ENABLED: ${AUTH_ENABLED:-true}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-720}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_TLS: ${SMTP_TLS:-true}
+      SCHEDULER_ENABLED: ${SCHEDULER_ENABLED:-true}
+      APP_TIMEZONE: ${APP_TIMEZONE:-Europe/Madrid}
+      APP_PUBLIC_URL: ${APP_PUBLIC_URL}
+      REGISTRATION_REQUIRES_APPROVAL: ${REGISTRATION_REQUIRES_APPROVAL:-true}
+      LOGIN_RATE_LIMIT_ATTEMPTS: ${LOGIN_RATE_LIMIT_ATTEMPTS:-5}
+      LOGIN_RATE_LIMIT_WINDOW_MINUTES: ${LOGIN_RATE_LIMIT_WINDOW_MINUTES:-10}
+      RUN_CREATE_ALL: "false"
+      RUN_DEFENSIVE_MIGRATIONS: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: /api
+    container_name: presucontrol-frontend
+    restart: unless-stopped
+    ports:
+      - "8088:80"
+    depends_on:
+      - backend
+
+volumes:
+  presucontrol_pgdata:

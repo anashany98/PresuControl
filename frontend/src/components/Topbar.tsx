@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom'
-import { Bell, ChevronDown, Gauge, LogOut, Menu, Search, Settings, UserCheck, X } from 'lucide-react'
+import { Activity, Bell, ChevronDown, Gauge, LogOut, Menu, Moon, Search, Settings, UserCheck, X } from 'lucide-react'
 import { type FormEvent, useRef, useState, useEffect } from 'react'
 import { isSystemAdmin, useAuth } from '../utils/auth'
 import type { NavSection } from './Sidebar'
@@ -8,6 +8,9 @@ interface Props {
   sections: NavSection[]
   counters: Record<string, number>
   onMenuClick: () => void
+  onNotifClick?: () => void
+  onActivityClick?: () => void
+  isAdmin?: boolean
 }
 
 function NavDropdown({ section, counters }: { section: NavSection; counters: Record<string, number> }) {
@@ -74,7 +77,7 @@ function NavDropdown({ section, counters }: { section: NavSection; counters: Rec
   )
 }
 
-export function Topbar({ sections, counters, onMenuClick }: Props) {
+export function Topbar({ sections, counters, onMenuClick, onNotifClick, onActivityClick, isAdmin }: Props) {
   const [q, setQ] = useState('')
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const userMenuRef = useRef<HTMLDivElement>(null)
@@ -87,7 +90,6 @@ export function Topbar({ sections, counters, onMenuClick }: Props) {
   const navigate = useNavigate()
   const { user, logout } = useAuth()
 
-  const isAdmin = isSystemAdmin(user)
   const hasUnread = (counters.notificaciones_sin_leer || 0) > 0
 
   function submit(e: FormEvent) {
@@ -145,7 +147,7 @@ export function Topbar({ sections, counters, onMenuClick }: Props) {
         <button
           className="btn secondary small"
           style={{ position: 'relative' }}
-          onClick={() => navigate('/notificaciones')}
+          onClick={() => onNotifClick ? onNotifClick() : navigate('/notificaciones')}
           aria-label="Notificaciones"
         >
           <Bell size={18} />
@@ -155,6 +157,12 @@ export function Topbar({ sections, counters, onMenuClick }: Props) {
             </span>
           )}
         </button>
+
+        {isAdmin && (
+          <button className="btn secondary small" onClick={onActivityClick} aria-label="Actividad" title="Actividad reciente">
+            <Activity size={18} />
+          </button>
+        )}
 
         <div className="user-menu-container">
           <button
@@ -191,6 +199,10 @@ export function Topbar({ sections, counters, onMenuClick }: Props) {
                   <UserCheck size={14} /> Usuarios
                 </NavLink>
               )}
+              <hr className="dropdown-divider" />
+              <button className="dropdown-item" onClick={() => { document.documentElement.classList.toggle('dark'); localStorage.setItem('darkMode', document.documentElement.classList.contains('dark') ? '1' : '0'); setUserMenuOpen(false) }}>
+                <Moon size={14} /> Modo oscuro
+              </button>
               <hr className="dropdown-divider" />
               <button className="dropdown-item danger" onClick={signOut}>
                 <LogOut size={14} /> Salir

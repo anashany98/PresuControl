@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import { AlertCircle, AlertTriangle, Calendar, CheckCircle2, Clock3, Download, FilePlus, FileText, Package, PackageCheck, ShieldAlert, TrendingUp } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { api, ESTADOS } from '../utils/api'
+import { api, ESTADOS, euro } from '../utils/api'
 import { ESTADO_COLOR } from '../utils/tokens'
+import { isSystemAdmin, useAuth } from '../utils/auth'
 import { useData } from '../utils/useData'
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { KpiCard } from '../components/KpiCard'
@@ -14,8 +16,24 @@ import { AtAGlance } from '../components/AtAGlance'
 import { DashboardSkeleton } from '../components/DashboardSkeleton'
 import type { DashboardPayload } from '../utils/dashboard'
 
+type DashboardView = 'normal' | 'ejecutivo'
+
+type ExecPayload = {
+  kpis: Record<string, number>
+  tendencias: { mes: string; nuevos: number; importe: number }[]
+  top_presupuestos: { id: number; numero: string; cliente: string; importe: number; estado: string; prioridad: string }[]
+  rendimiento_gestores: { gestor: string; total: number; importe_total: number; criticos: number; incidencias: number }[]
+  distribucion_estados: { estado: string; total: number }[]
+}
+
 export function Dashboard() {
+  const { user } = useAuth()
+  const isAdmin = isSystemAdmin(user)
+  const [view, setView] = useState<DashboardView>('normal')
+
   const { data, loading, error } = useData<DashboardPayload>(() => api.get('/dashboard'), [])
+
+  const execData = useData<ExecPayload>(() => api.get('/dashboard/ejecutivo'), [view])
 
   if (loading) return <DashboardSkeleton />
   if (error || !data) return <div className="error p-4">{error || 'No se pudo cargar el dashboard'}</div>
@@ -67,6 +85,16 @@ export function Dashboard() {
       <AlertBanner alerta={data.alerta} />
       <AtAGlance text={data.resumen_texto} />
 
+      {/* View switcher (admin only) */}
+      {isAdmin && (
+        <div className="flex gap-2 mb-4">
+          <button className={`btn small ${view === 'normal' ? 'primary' : 'secondary'}`} onClick={() => setView('normal')}>Dashboard</button>
+          <button className={`btn small ${view === 'ejecutivo' ? 'primary' : 'secondary'}`} onClick={() => setView('ejecutivo')}>Ejecutivo</button>
+        </div>
+      )}
+
+      {view === 'normal' && (
+        <>
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -82,10 +110,10 @@ export function Dashboard() {
 
       {/* Stats Row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-        {data.kpis[0] && <KpiCard label="Total activos" value={data.kpis[0].value} trend={data.kpis[0].trend != null ? { value: data.kpis[0].trend, isGood: data.kpis[0].trendUp ?? true } : undefined} icon={FileText} />}
-        {data.kpis[1] && <KpiCard label="En riesgo" value={data.kpis[1].value} sublabel={data.kpis[1].sublabel} trend={data.kpis[1].trend != null ? { value: data.kpis[1].trend, isGood: data.kpis[1].trendUp ?? false } : undefined} tone="danger" icon={ShieldAlert} />}
-        {data.kpis[2] && <KpiCard label="Cerrados este mes" value={data.kpis[2].value} trend={data.kpis[2].trend != null ? { value: data.kpis[2].trend, isGood: data.kpis[2].trendUp ?? true } : undefined} tone="success" icon={CheckCircle2} />}
-        {data.kpis[3] && <KpiCard label="Pedidos pendientes" value={data.kpis[3].value} tone="purple" icon={Package} />}
+        {data.kpis[0] && <KpiCard label="Total activos" value={data.kpis[0].value} trend={data.kpis[0].trend != null ? { value: data.kpis[0].trend, isGood: data.kpis[0].trendUp ?? true } : undefined} icon={FileText} linkTo="/presupuestos" />}
+        {data.kpis[1] && <KpiCard label="En riesgo" value={data.kpis[1].value} sublabel={data.kpis[1].sublabel} trend={data.kpis[1].trend != null ? { value: data.kpis[1].trend, isGood: data.kpis[1].trendUp ?? false } : undefined} tone="danger" icon={ShieldAlert} linkTo="/presupuestos?prioridad=Crítico&sort_by=prioridad&sort_dir=desc" />}
+        {data.kpis[2] && <KpiCard label="Cerrados este mes" value={data.kpis[2].value} trend={data.kpis[2].trend != null ? { value: data.kpis[2].trend, isGood: data.kpis[2].trendUp ?? true } : undefined} tone="success" icon={CheckCircle2} linkTo="/informes" />}
+        {data.kpis[3] && <KpiCard label="Pedidos pendientes" value={data.kpis[3].value} tone="purple" icon={Package} linkTo="/presupuestos?estado=Pedido%20proveedor%20realizado" />}
       </div>
 
       {/* Quick Links */}
@@ -97,7 +125,11 @@ export function Dashboard() {
       </div>
 
       {/* Charts Grid 2x2 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+      <details className="mb-4" open>
+        <summary className="text-sm font-semibold text-ink-muted uppercase tracking-wide cursor-pointer py-2 border-b border-border mb-3 md:hidden">
+          📊 Gráficos
+        </summary>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Riesgo Donut */}
         <div className="card p-4">
           <h3 className="text-sm font-semibold text-ink-muted uppercase tracking-wide mb-3">Riesgo</h3>
@@ -119,8 +151,8 @@ export function Dashboard() {
                 <span className="text-ink-muted">{d.name}</span>
               </span>
             ))}
-          </div>
         </div>
+      </div>
 
         {/* Trend Chart */}
         <div className="card p-4">
@@ -152,9 +184,91 @@ export function Dashboard() {
           <EstadoChart data={estadoCounts} />
         </div>
       </div>
+      </details>
 
       {/* Sections Tabs */}
       <DashboardTabs tabs={tabs} />
+        </>
+      )}
+
+      {/* ── Executive Dashboard (admin only) ── */}
+      {view === 'ejecutivo' && isAdmin && (
+        <div>
+          {execData.loading ? <DashboardSkeleton /> : execData.error ? <div className="error p-4">{execData.error}</div> : execData.data ? (
+            <>
+              {/* Executive KPIs */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+                <KpiCard label="Presupuestos activos" value={execData.data.kpis.presupuestos_activos} />
+                <KpiCard label="Dinero en riesgo" value={euro(execData.data.kpis.dinero_en_riesgo)} tone="danger" />
+                <KpiCard label="Críticos" value={execData.data.kpis.criticos} tone="danger" />
+                <KpiCard label="Aceptados sin pedido" value={execData.data.kpis.aceptados_sin_pedido} tone="warning" />
+              </div>
+
+              {/* Top Presupuestos */}
+              <div className="card p-4 mb-4">
+                <h3 className="text-sm font-semibold text-ink-muted uppercase tracking-wide mb-3">Top presupuestos por importe</h3>
+                <div className="flex flex-col gap-1">
+                  {execData.data.top_presupuestos.map(p => (
+                    <Link key={p.id} to={`/presupuestos/${p.id}`} className="flex items-center justify-between p-2 rounded-lg hover:bg-surface-hover border border-border text-sm">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className="font-mono text-xs text-brand font-semibold">{p.numero}</span>
+                        <span className="font-semibold text-ink truncate">{p.cliente}</span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${
+                          p.prioridad === 'Crítico' || p.prioridad === 'Rojo' ? 'bg-red-100 text-red-700' :
+                          p.prioridad === 'Naranja' ? 'bg-orange-100 text-orange-700' :
+                          'bg-gray-100 text-gray-600'}`}>{p.prioridad}</span>
+                      </div>
+                      <span className="font-semibold ml-3">{euro(p.importe)}</span>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+
+              {/* Rendimiento Gestores */}
+              <div className="card p-4 mb-4">
+                <h3 className="text-sm font-semibold text-ink-muted uppercase tracking-wide mb-3">Rendimiento por gestor</h3>
+                <div className="table-wrap">
+                  <table>
+                    <thead><tr><th>Gestor</th><th>Total</th><th>Importe</th><th>Críticos</th><th>Incidencias</th></tr></thead>
+                    <tbody>
+                      {execData.data.rendimiento_gestores.map(g => (
+                        <tr key={g.gestor}>
+                          <td className="font-semibold">{g.gestor}</td>
+                          <td>{g.total}</td>
+                          <td className="money">{euro(g.importe_total)}</td>
+                          <td><span className={g.criticos > 0 ? 'text-danger font-semibold' : ''}>{g.criticos}</span></td>
+                          <td><span className={g.incidencias > 0 ? 'text-danger font-semibold' : ''}>{g.incidencias}</span></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Distribución Estados */}
+              <div className="card p-4">
+                <h3 className="text-sm font-semibold text-ink-muted uppercase tracking-wide mb-3">Distribución de estados</h3>
+                <div className="flex flex-col gap-1">
+                  {execData.data.distribucion_estados.map(d => {
+                    const maxVal = Math.max(...execData.data!.distribucion_estados.map(x => x.total), 1)
+                    const pct = Math.round((d.total / maxVal) * 100)
+                    const color = ESTADO_COLOR[d.estado] || '#6b7280'
+                    return (
+                      <div key={d.estado} className="flex items-center gap-2 text-xs">
+                        <span className="w-32 text-right text-ink-muted truncate">{d.estado}</span>
+                        <div className="flex-1 h-4 bg-gray-100 rounded-sm overflow-hidden">
+                          <div className="h-full rounded-sm" style={{ width: `${pct}%`, backgroundColor: color, minWidth: d.total > 0 ? '4px' : '0' }} />
+                        </div>
+                        <span className="w-8 text-right font-mono text-ink">{d.total}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </>
+          ) : null}
+        </div>
+      )}
     </div>
   )
 }

@@ -290,6 +290,7 @@ class SettingsOut(BaseModel):
     dias_aviso_pedido_sin_plazo: int
     email_avisos_activo: bool
     emails_destino_avisos: list[str]
+    gestores_emails: dict = {}
     enviar_email_criticos_inmediato: bool
     asunto_email_avisos: str
     avisos_automaticos_activos: bool
@@ -305,10 +306,11 @@ class SettingsOut(BaseModel):
     timezone: str
     public_url: str
     smtp_configured: bool
-    smtp_host: str | None = None
-    smtp_port: int
-    smtp_from: str | None = None
-    smtp_tls: bool
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_from: str = ""
+    smtp_tls: bool = True
 
 class SettingsUpdate(BaseModel):
     estados: list[str] | None = None
@@ -332,6 +334,12 @@ class SettingsUpdate(BaseModel):
     horas_escalado_nivel_2: int | None = None
     horas_escalado_nivel_3: int | None = None
     dias_sin_actualizar_aviso: int | None = None
+    smtp_host: str | None = None
+    smtp_port: int | None = None
+    smtp_user: str | None = None
+    smtp_password: str | None = None
+    smtp_from: str | None = None
+    smtp_tls: bool | None = None
 
 class ImportPreview(BaseModel):
     total_filas: int
@@ -438,15 +446,6 @@ class PaginatedPresupuestos(BaseModel):
 
 class EmailTestPayload(BaseModel):
     destinatarios: list[str] | None = None
-
-
-class PasswordResetRequest(BaseModel):
-    email: str = Field(..., min_length=5)
-
-
-class PasswordResetConfirm(BaseModel):
-    token: str = Field(..., min_length=20)
-    password: str = Field(..., min_length=12)
 
 
 class PasswordAdminReset(BaseModel):

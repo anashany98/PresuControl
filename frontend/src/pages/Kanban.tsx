@@ -135,6 +135,7 @@ export function Kanban() {
   const [dragId, setDragId] = useState<number | null>(null)
   const [dragOverCol, setDragOverCol] = useState<string | null>(null)
   const [savingId, setSavingId] = useState<number | null>(null)
+  const prevStateRef = useRef<{ presupuestoId: number; prevEstado: string; prevVersion: number } | null>(null)
   const [target, setTarget] = useState<{ presupuesto: Presupuesto; status: string } | null>(null)
   const [pedidoPanel, setPedidoPanel] = useState<Presupuesto | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
@@ -246,8 +247,11 @@ export function Kanban() {
 
   async function apply(payload: KanbanPayload) {
     if (!target || saving) return
+    const prevEstado = target.presupuesto.estado
+    const prevVersion = target.presupuesto.version
+    const presupuestoId = target.presupuesto.id
     setSaving(true)
-    setSavingId(target.presupuesto.id)
+    setSavingId(presupuestoId)
     const dateFields: (keyof KanbanPayload)[] = [
       'fecha_envio_cliente', 'fecha_aceptacion', 'fecha_pedido_proveedor',
       'plazo_proveedor', 'fecha_prevista_entrega', 'fecha_limite_siguiente_accion',
@@ -260,14 +264,24 @@ export function Kanban() {
     try {
       if (cleaned.action === 'direct_status') {
         if (target.status === 'Pedido proveedor realizado') {
-          await api.post(`/presupuestos/${target.presupuesto.id}/quick-action`, { action: 'crear_pedido_proveedor', expected_version: target.presupuesto.version, proveedor: cleaned.proveedor, numero_pedido_proveedor: cleaned.numero_pedido_proveedor, fecha_pedido_proveedor: cleaned.fecha_pedido_proveedor || new Date().toISOString().slice(0, 10) })
+          await api.post(`/presupuestos/${presupuestoId}/quick-action`, { action: 'crear_pedido_proveedor', expected_version: prevVersion, proveedor: cleaned.proveedor, numero_pedido_proveedor: cleaned.numero_pedido_proveedor, fecha_pedido_proveedor: cleaned.fecha_pedido_proveedor || new Date().toISOString().slice(0, 10) })
         } else {
-          await api.patch(`/presupuestos/${target.presupuesto.id}`, { estado: target.status, expected_version: target.presupuesto.version })
+          await api.patch(`/presupuestos/${presupuestoId}`, { estado: target.status, expected_version: prevVersion })
         }
       } else {
-        await api.post(`/presupuestos/${target.presupuesto.id}/quick-action`, cleaned)
+        await api.post(`/presupuestos/${presupuestoId}/quick-action`, cleaned)
       }
-      toast.success('Presupuesto movido correctamente')
+      const label = target.status.split(' - ')[0]
+      toast.success(`Movido a "${label}"`, {
+        label: 'Deshacer',
+        onClick: async () => {
+          try {
+            await api.patch(`/presupuestos/${presupuestoId}`, { estado: prevEstado, expected_version: prevVersion + 1 })
+            reload()
+            toast.success('Movimiento deshecho')
+          } catch { toast.error('No se pudo deshacer') }
+        }
+      })
       setTarget(null)
       reload()
     } catch (e) { setMsg(e instanceof Error ? e.message : String(e)) }

@@ -1,5 +1,5 @@
-import { useMemo, useState, useEffect } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useMemo, useState, useEffect, useRef } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Columns3, Download, Plus, RefreshCw, RotateCcw } from 'lucide-react'
 import { PageHeader } from '../components/PageHeader'
 import { PriorityBadge, StateBadge } from '../components/Badges'
@@ -91,19 +91,70 @@ export function Presupuestos() {
       </div>
       {data && <div className="summary-strip"><span><strong>{data.total}</strong> presupuestos</span><span><strong>{euro(data.importe_total)}</strong> importe filtrado</span><span>Página {data.page} de {data.total_pages}</span></div>}
       {error && <div className="error">{error}</div>}
-      {loading ? <SkeletonTable rows={6} /> : <PresupuestosTable rows={rows} has={has} compact={compact} />}
+      {loading ? <SkeletonTable rows={6} /> : <PresupuestosTable rows={rows} has={has} compact={compact} sortBy={params.get('sort_by') || ''} sortDir={params.get('sort_dir') || 'desc'} onSort={(key) => {
+        const cur = params.get('sort_by') || ''
+        const dir = params.get('sort_dir') || 'desc'
+        if (cur === key) set('sort_dir', dir === 'asc' ? 'desc' : 'asc')
+        else { set('sort_by', key); set('sort_dir', 'asc') }
+      }} />}
       {data && <div className="pager"><button className="btn secondary" disabled={data.page <= 1} onClick={() => set('page', String(data.page - 1))}>Anterior</button><button className="btn secondary" disabled={data.page >= data.total_pages} onClick={() => set('page', String(data.page + 1))}>Siguiente</button></div>}
     </>
   )
 }
 
-export function PresupuestosTable({ rows, has, compact = false }: { rows: Presupuesto[]; has?: (key: string) => boolean; compact?: boolean }) {
+export function PresupuestosTable({ rows, has, compact = false, sortBy, sortDir, onSort }: { rows: Presupuesto[]; has?: (key: string) => boolean; compact?: boolean; sortBy?: string; sortDir?: string; onSort?: (key: string) => void }) {
   const show = has || (() => true)
-  return <div className={`table-wrap ${compact ? 'compact-table' : ''}`} style={{ marginTop: 16 }}><table>
+  const navigate = useNavigate()
+  const [focusIdx, setFocusIdx] = useState(-1)
+  const tableRef = useRef<HTMLDivElement>(null)
+  const sortArrow = (key: string) => sortBy === key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''
+  const sortable = (key: string) => onSort ? { onClick: () => onSort(key), style: { cursor: 'pointer', userSelect: 'none' } as React.CSSProperties } : {}
+
+  useEffect(() => {
+    const wrap = tableRef.current
+    const thead = wrap?.querySelector('thead') as HTMLElement | null
+    if (!wrap || !thead) return
+
+    // Create a fixed header clone
+    const clone = document.createElement('div')
+    clone.className = 'fixed-header-clone'
+    clone.style.cssText = 'position:fixed;top:60px;z-index:10;background:var(--panel-strong);display:none;overflow:hidden;border-bottom:1px solid var(--border)'
+    clone.innerHTML = '<table style="width:100%;border-collapse:collapse"><thead>' + thead.innerHTML + '</thead></table>'
+    document.body.appendChild(clone)
+
+    function onScroll() {
+      const rect = wrap!.getBoundingClientRect()
+      const shouldFix = rect.top < 60 && rect.bottom > 120
+      clone.style.display = shouldFix ? 'block' : 'none'
+      if (shouldFix) {
+        clone.style.left = rect.left + 'px'
+        clone.style.width = rect.width + 'px'
+        const origCells = thead!.querySelectorAll('th')
+        const cloneCells = clone.querySelectorAll('th')
+        origCells.forEach((th, i) => {
+          if (cloneCells[i]) cloneCells[i].style.width = th.getBoundingClientRect().width + 'px'
+        })
+      }
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => { window.removeEventListener('scroll', onScroll); clone.remove() }
+  }, [])
+
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); setFocusIdx(i => Math.min(i + 1, rows.length - 1)) }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); setFocusIdx(i => Math.max(i - 1, -1)) }
+      else if (e.key === 'Enter' && focusIdx >= 0) { navigate(`/presupuestos/${rows[focusIdx].id}`) }
+    }
+    if (focusIdx >= 0) { document.addEventListener('keydown', handleKey); return () => document.removeEventListener('keydown', handleKey) }
+  }, [focusIdx, rows, navigate])
+
+  return <div className={`table-wrap ${compact ? 'compact-table' : ''}`} style={{ marginTop: 16 }} onClick={() => setFocusIdx(-1)} ref={tableRef}><table>
     <thead><tr>
-      {show('numero') && <th>Nº presupuesto</th>}{show('cliente') && <th>Cliente</th>}{show('obra') && <th>Obra / referencia</th>}{show('gestor') && <th>Gestor</th>}{show('estado') && <th>Estado</th>}{show('importe') && <th>Importe</th>}{show('fechas') && <th>Fechas</th>}{show('proveedor') && <th>Proveedor</th>}{show('pedido') && <th>Pedido proveedor</th>}{show('responsable') && <th>Responsable</th>}{show('accion') && <th>Siguiente acción</th>}{show('dias') && <th>Días parado</th>}{show('prioridad') && <th>Prioridad</th>}{show('incidencia') && <th>Incidencia</th>}{show('ultima') && <th>Última actualización</th>}
+      {show('numero') && <th>Nº presupuesto</th>}{show('cliente') && <th {...sortable('cliente')}>Cliente{sortArrow('cliente')}</th>}{show('obra') && <th>Obra / referencia</th>}{show('gestor') && <th>Gestor</th>}{show('estado') && <th>Estado</th>}{show('importe') && <th {...sortable('importe')}>Importe{sortArrow('importe')}</th>}{show('fechas') && <th {...sortable('fecha')}>Fechas{sortArrow('fecha')}</th>}{show('proveedor') && <th>Proveedor</th>}{show('pedido') && <th>Pedido proveedor</th>}{show('responsable') && <th>Gestor</th>}{show('accion') && <th>Siguiente acción</th>}{show('dias') && <th {...sortable('dias_parado')}>Días parado{sortArrow('dias_parado')}</th>}{show('prioridad') && <th {...sortable('prioridad')}>Prioridad{sortArrow('prioridad')}</th>}{show('incidencia') && <th>Incidencia</th>}{show('ultima') && <th {...sortable('ultima_actualizacion')}>Última actualización{sortArrow('ultima_actualizacion')}</th>}
+      <th style={{ width: 40 }}></th>
     </tr></thead>
-    <tbody>{rows.map(p => <tr key={p.id} className={p.archivado ? 'row-muted' : ''}>
+    <tbody>{rows.map((p, idx) => <tr key={p.id} className={`${p.archivado ? 'row-muted' : ''} ${idx === focusIdx ? 'ring-2 ring-brand-200' : ''} group`}>
       {show('numero') && <td><Link to={`/presupuestos/${p.id}`}><strong>{p.numero_presupuesto}</strong></Link>{p.archivado && <div className="muted">Archivado</div>}</td>}
       {show('cliente') && <td>{p.cliente}</td>}
       {show('obra') && <td>{p.obra_referencia}</td>}
@@ -112,13 +163,30 @@ export function PresupuestosTable({ rows, has, compact = false }: { rows: Presup
       {show('importe') && <td className="money">{euro(p.importe)}</td>}
       {show('fechas') && <td><small>Presu: {fmtDate(p.fecha_presupuesto)}<br/>Envío: {fmtDate(p.fecha_envio_cliente)}<br/>Acept.: {fmtDate(p.fecha_aceptacion)}</small></td>}
       {show('proveedor') && <td>{p.proveedor || '—'}</td>}
-      {show('pedido') && <td><PedidoSummaryBadge presupuesto={p} variant="table" /></td>}
-      {show('responsable') && <td>{p.responsable_actual || '—'}</td>}
+      {show('pedido') && <td>
+      {(p.pedidos?.length || 0) === 0 ? <span className="text-ink-muted text-xs">—</span> :
+        <div className="text-xs">
+          {p.pedidos!.slice(0, 3).map((ped, i) => (
+            <div key={i} className="flex items-center gap-1 mb-0.5">
+              <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: ped.estado_entrega === 'completado' ? '#22c55e' : ped.estado_entrega === 'parcial' ? '#3b82f6' : '#f59e0b' }} />
+              <span className="truncate">{ped.proveedor?.slice(0, 18)}{ped.proveedor && ped.proveedor.length > 18 ? '…' : ''}</span>
+              {ped.fecha_entrega_prevista && <span className="text-ink-muted">{new Date(ped.fecha_entrega_prevista).toLocaleDateString('es-ES', {day:'2-digit', month:'2-digit'})}</span>}
+              {!ped.fecha_entrega_prevista && ped.estado_entrega !== 'completado' && <span className="text-warning">sin fecha</span>}
+            </div>
+          ))}
+          {(p.pedidos?.length || 0) > 3 && <span className="text-ink-muted">+{p.pedidos!.length - 3} más</span>}
+        </div>
+      }
+    </td>}
+      {show('responsable') && <td>{p.gestor || '—'}</td>}
       {show('accion') && <td><strong>{p.siguiente_accion || '—'}</strong><br/><small>Vence: {fmtDate(p.fecha_limite_siguiente_accion)}</small></td>}
       {show('dias') && <td>{p.dias_parado}</td>}
       {show('prioridad') && <td><PriorityBadge value={p.prioridad_calculada}/></td>}
       {show('incidencia') && <td>{p.incidencia ? 'Sí' : 'No'}</td>}
       {show('ultima') && <td>{fmtDate(p.fecha_ultima_actualizacion)}</td>}
+      <td className="opacity-0 group-hover:opacity-100 transition-opacity">
+        <Link to={`/kanban?focus=${p.id}`} className="text-xs text-brand hover:underline whitespace-nowrap" onClick={e => e.stopPropagation()}>Kanban →</Link>
+      </td>
     </tr>)}</tbody>
   </table></div>
 }

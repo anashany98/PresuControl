@@ -1,12 +1,10 @@
 from __future__ import annotations
 
 import asyncio
-import hmac
 import io
 import json
 import logging
 import os
-import secrets
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
@@ -21,7 +19,7 @@ from sqlalchemy import func, or_, desc, asc, text, case
 from sqlalchemy.orm import Session, selectinload
 
 from .database import Base, engine, get_db, SessionLocal
-from .models import Comentario, EmailNotificationLog, EvaluacionProveedor, HistorialCambio, LoginAttempt, PasswordResetAttempt, PedidoProveedor, Presupuesto, PresupuestoProveedor, Proveedor, RegistrationAttempt, Usuario
+from .models import Comentario, EmailNotificationLog, EvaluacionProveedor, HistorialCambio, LoginAttempt, PedidoProveedor, Presupuesto, PresupuestoProveedor, Proveedor, RegistrationAttempt, Usuario
 from .rules import CLOSED_STATES, apply_derived_fields, calculate_risk, get_pedido_counts, validate_presupuesto
 from .schemas import (
     ComentarioCreate,
@@ -56,14 +54,12 @@ from .schemas import (
     EmailLogOut,
     PaginatedPresupuestos,
     UserApprovalPayload,
-    PasswordResetRequest,
-    PasswordResetConfirm,
     PasswordAdminReset,
     SidebarCounters,
 )
 from .settings import get_settings, update_settings
 from .config import get_fastapi_docs_config, get_public_paths, validate_runtime_config
-from .auth import create_access_token, get_authenticated_user_from_request, hash_password, hash_reset_token, is_auth_enabled, normalize_email, verify_password
+from .auth import create_access_token, get_authenticated_user_from_request, hash_password, is_auth_enabled, normalize_email, verify_password
 from .access_control import ADMIN_ROLE, GESTION_ROLE, require_gestion_or_admin, require_system_manager, sync_legacy_system_flag, user_role
 from .analytics import (
     active_rows_with_risk,
@@ -71,14 +67,17 @@ from .analytics import (
     build_executive_dashboard_payload,
     build_reports_payload,
     build_sidebar_counters,
+    enrich_risk,
     get_accepted_without_order_rows,
     get_report_rows as analytics_get_report_rows,
     get_risky_rows,
     get_today_rows,
+    money,
+    sidebar_candidate_rows,
 )
 from .emailer import parse_recipients, send_email
-from .notifications import build_alerts, money_at_risk, run_automatic_alert_checks, send_alert_digest, send_escalation_alerts, send_immediate_alerts_for_budget
-from .notifications_inapp import obtener_notificaciones, contar_sin_leer, marcar_leida, marcar_todas_leidas
+from .notifications import build_alerts, money_at_risk, run_automatic_alert_checks, send_alert_digest, send_escalation_alerts, send_immediate_alerts_for_budget, send_weekly_summary
+from .notifications_inapp import limpiar_notificaciones_antiguas, obtener_notificaciones, contar_sin_leer, marcar_leida, marcar_todas_leidas
 from .routers.health import router as health_router
 from .routers.auth import router as auth_router
 from .logging_middleware import StructuredLoggingMiddleware
@@ -110,11 +109,29 @@ async def automatic_alert_loop():
         await asyncio.sleep(minutes * 60)
 
 
+async def cleanup_old_rate_limits():
+    """Periodically purge old login/registration attempt records."""
+    while True:
+        db = SessionLocal()
+        try:
+            cutoff = datetime.now(timezone.utc) - timedelta(days=30)
+            db.query(LoginAttempt).filter(LoginAttempt.window_start < cutoff).delete()
+            db.query(RegistrationAttempt).filter(RegistrationAttempt.window_start < cutoff).delete()
+            db.commit()
+        except Exception:
+            db.rollback()
+        finally:
+            db.close()
+        await asyncio.sleep(86400)  # Run once per day
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     task: asyncio.Task | None = None
+    cleanup_task: asyncio.Task | None = None
     if os.getenv("SCHEDULER_ENABLED", "true").lower() in {"1", "true", "yes", "on"}:
         task = asyncio.create_task(automatic_alert_loop())
+        cleanup_task = asyncio.create_task(cleanup_old_rate_limits())
     try:
         yield
     finally:
@@ -122,6 +139,12 @@ async def lifespan(app: FastAPI):
             task.cancel()
             try:
                 await task
+            except asyncio.CancelledError:
+                pass
+        if cleanup_task:
+            cleanup_task.cancel()
+            try:
+                await cleanup_task
             except asyncio.CancelledError:
                 pass
 
@@ -172,8 +195,6 @@ def ensure_schema_compatibility():
         conn.execute(text("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS puede_gestionar_sistema BOOLEAN NOT NULL DEFAULT FALSE"))
         conn.execute(text("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS rol VARCHAR(40) NOT NULL DEFAULT 'gestion'"))
         conn.execute(text("UPDATE usuarios SET rol = CASE WHEN puede_gestionar_sistema THEN 'admin_sistema' ELSE 'gestion' END WHERE rol IS NULL OR rol NOT IN ('admin_sistema', 'gestion')"))
-        conn.execute(text("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS reset_password_token_hash VARCHAR(128)"))
-        conn.execute(text("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS reset_password_expira_en TIMESTAMP WITH TIME ZONE"))
         conn.execute(text("ALTER TABLE email_notification_logs ADD COLUMN IF NOT EXISTS escalation_level INTEGER NOT NULL DEFAULT 0"))
 
 
@@ -327,33 +348,6 @@ def enforce_registration_rate_limit(request: Request, db: Session):
         raise HTTPException(status_code=429, detail=f"Demasiados intentos de registro. Prueba de nuevo en {minutes} minutos.")
 
 
-def enforce_password_reset_rate_limit(request: Request, db: Session):
-    """Rate limit for password reset to prevent email enumeration attacks."""
-    max_attempts = int(os.getenv("PASSWORD_RESET_RATE_LIMIT_ATTEMPTS", "3"))
-    minutes = int(os.getenv("PASSWORD_RESET_RATE_LIMIT_WINDOW_MINUTES", "60"))
-    now = datetime.now(timezone.utc)
-    ip = request.client.host if request.client else "unknown"
-    window_start = now - timedelta(minutes=minutes)
-
-    db.query(PasswordResetAttempt).filter(
-        PasswordResetAttempt.ip == ip,
-        PasswordResetAttempt.window_start < window_start,
-    ).delete()
-
-    from sqlalchemy.dialects.postgresql import insert as pg_insert
-    stmt = pg_insert(PasswordResetAttempt).values(ip=ip, attempts=1, window_start=now)
-    stmt = stmt.on_conflict_do_update(
-        index_elements=['ip'],
-        set_={'attempts': PasswordResetAttempt.attempts + 1, 'window_start': now}
-    )
-    db.execute(stmt)
-    db.commit()
-
-    record = db.query(PasswordResetAttempt).filter(PasswordResetAttempt.ip == ip).first()
-    if record and record.attempts >= max_attempts:
-        raise HTTPException(status_code=429, detail=f"Demasiados intentos de recuperación. Prueba de nuevo en {minutes} minutos.")
-
-
 def user_to_out(user: Usuario) -> Usuario:
     return user
 
@@ -409,45 +403,6 @@ def login(payload: UserLogin, request: Request, db: Session = Depends(get_db)):
     return {"access_token": token, "token_type": "bearer", "user": user}
 
 
-
-@app.post("/auth/password/request")
-def request_password_reset(payload: PasswordResetRequest, request: Request, db: Session = Depends(get_db)):
-    enforce_password_reset_rate_limit(request, db)
-    email = normalize_email(payload.email)
-    user = db.query(Usuario).filter(Usuario.email == email, Usuario.activo == True, Usuario.aprobado == True).first()  # noqa: E712
-    if not user:
-        return {"ok": True, "message": "Si el email existe y está aprobado, recibirá instrucciones."}
-    token = secrets.token_urlsafe(32)
-    user.reset_password_token_hash = hash_reset_token(token)
-    user.reset_password_expira_en = datetime.now(timezone.utc) + timedelta(hours=2)
-    db.commit()
-    app_url = os.getenv("APP_PUBLIC_URL", "http://localhost:8088").rstrip("/")
-    reset_url = f"{app_url}/reset-password?token={token}"
-    body = f"Solicitud de recuperación de contraseña PresuControl. Enlace válido 2 horas: {reset_url}"
-    html = f"<p>Solicitud de recuperación de contraseña de <strong>PresuControl</strong>.</p><p><a href='{reset_url}'>Cambiar contraseña</a></p><p>El enlace caduca en 2 horas.</p>"
-    try:
-        send_email("PresuControl · recuperación de contraseña", [user.email], body, html)
-    except Exception as exc:
-        # Loguear error SMTP pero no revelar detalles al cliente
-        logger.warning(f"Error enviando email de reset a {user.email}: {exc}")
-    return {"ok": True, "message": "Si el email existe y está aprobado, recibirá instrucciones."}
-
-
-@app.post("/auth/password/reset")
-def reset_password(payload: PasswordResetConfirm, db: Session = Depends(get_db)):
-    token_hash = hash_reset_token(payload.token)
-    user = db.query(Usuario).filter(Usuario.reset_password_token_hash == token_hash).first()
-    now = datetime.now(timezone.utc)
-    expires_at = ensure_aware_utc(user.reset_password_expira_en) if user and user.reset_password_expira_en else None
-    if not user or not expires_at or expires_at < now:
-        raise HTTPException(status_code=400, detail="Token inválido o caducado.")
-    if not hmac.compare_digest(user.reset_password_token_hash or "", token_hash):
-        raise HTTPException(status_code=400, detail="Token inválido o caducado.")
-    user.hashed_password = hash_password(payload.password)
-    user.reset_password_token_hash = None
-    user.reset_password_expira_en = None
-    db.commit()
-    return {"ok": True}
 
 @app.get("/auth/me", response_model=UserOut)
 def me(request: Request, db: Session = Depends(get_db)):
@@ -556,8 +511,6 @@ def admin_reset_password(usuario_id: int, payload: PasswordAdminReset, request: 
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado.")
     user.hashed_password = hash_password(payload.password)
-    user.reset_password_token_hash = None
-    user.reset_password_expira_en = None
     db.commit()
     db.refresh(user)
     return user
@@ -771,11 +724,17 @@ def read_settings(request: Request, db: Session = Depends(get_db)):
         **settings,
         "timezone": os.getenv("APP_TIMEZONE", "Europe/Madrid"),
         "public_url": os.getenv("APP_PUBLIC_URL", "http://localhost:8088"),
-        "smtp_configured": bool(os.getenv("SMTP_HOST") and os.getenv("SMTP_FROM")),
-        "smtp_host": os.getenv("SMTP_HOST") or None,
-        "smtp_port": int(os.getenv("SMTP_PORT", "587")),
-        "smtp_from": os.getenv("SMTP_FROM") or None,
-        "smtp_tls": os.getenv("SMTP_TLS", "true").lower() in {"1", "true", "yes", "on"},
+        # SMTP: env vars > DB settings
+        "smtp_host": os.getenv("SMTP_HOST") or settings.get("smtp_host") or "",
+        "smtp_port": int(os.getenv("SMTP_PORT") or settings.get("smtp_port", 587)),
+        "smtp_user": os.getenv("SMTP_USER") or settings.get("smtp_user") or "",
+        "smtp_from": os.getenv("SMTP_FROM") or settings.get("smtp_from") or "",
+        "smtp_tls": (bool(os.getenv("SMTP_HOST")) and os.getenv("SMTP_TLS", "true").lower() in {"1", "true", "yes", "on"})
+                     or (not os.getenv("SMTP_HOST") and bool(settings.get("smtp_tls", True))),
+        "smtp_configured": bool(
+            (os.getenv("SMTP_HOST") or settings.get("smtp_host")) 
+            and (os.getenv("SMTP_FROM") or settings.get("smtp_from"))
+        ),
     }
 
 @app.put("/settings", response_model=SettingsOut)
@@ -790,6 +749,18 @@ def save_settings(payload: SettingsUpdate, request: Request, db: Session = Depen
 @app.get("/metadata/options")
 def metadata_options(db: Session = Depends(get_db)):
     return build_metadata_options(db)
+
+
+@app.get("/metadata/autocomplete")
+def metadata_autocomplete(field: str = Query(...), q: str = Query("", min_length=2), db: Session = Depends(get_db)):
+    """Return matching values for autocomplete fields."""
+    allowed = {"cliente": Presupuesto.cliente, "obra_referencia": Presupuesto.obra_referencia, "proveedor": Presupuesto.proveedor}
+    if field not in allowed:
+        raise HTTPException(status_code=422, detail=f"Campo no válido: {field}. Usa: {', '.join(allowed.keys())}")
+    col = allowed[field]
+    like = f"%{q.strip()}%"
+    results = db.query(col).filter(col.ilike(like), col.isnot(None), col != "").distinct().order_by(col).limit(10).all()
+    return [r[0] for r in results if r[0]]
 
 
 @app.get("/presupuestos")
@@ -808,7 +779,7 @@ def list_presupuestos(
     sort_by: str | None = "ultima_actualizacion",
     sort_dir: str | None = "desc",
     limit: int = Query(250, ge=1, le=2000),
-    sort: str | None = Query(None, regex="^(prioridad)$"),
+    sort: str | None = Query(None, pattern="^(prioridad)$"),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
 ):
@@ -911,6 +882,12 @@ def create_presupuesto(payload: PresupuestoCreate, request: Request, db: Session
     for key, value in list(data.items()):
         if isinstance(value, str):
             data[key] = value.strip()
+    # Auto-assign gestor to current user if not provided or user is not admin
+    user = getattr(request.state, "user", None)
+    if user and (not data.get("gestor") or data.get("gestor", "").strip() == ""):
+        data["gestor"] = user.nombre
+    elif user and user_role(user) != ADMIN_ROLE:
+        data["gestor"] = user.nombre
     obj = Presupuesto(**data)
     actor = current_actor(request, payload.modificado_por)
     if obj.estado in {"Bloqueado / incidencia"}:
@@ -1321,7 +1298,7 @@ def mi_mesa(request: Request, db: Session = Depends(get_db), responsable: str | 
             conds.append(Presupuesto.responsable_actual.ilike(f"%{key}%"))
             conds.append(Presupuesto.gestor.ilike(f"%{key}%"))
         q = q.filter(or_(*conds))
-    rows = q.all()
+    rows = q.limit(500).all()
     today = date.today()
     settings = get_settings(db)
     pedido_counts = get_pedido_counts(db, [r.id for r in rows])
@@ -1354,7 +1331,23 @@ def mi_mesa(request: Request, db: Session = Depends(get_db), responsable: str | 
 def sidebar_counters(request: Request, db: Session = Depends(get_db)):
     user = getattr(request.state, "user", None)
     user_id = user.id if user else None
-    return build_sidebar_counters(db, user_id)
+    counters = build_sidebar_counters(db, user_id)
+    # Always calculate personal counters (for the "Mi trabajo" menu item)
+    if user:
+        keys = [k for k in [getattr(user, "nombre", None), getattr(user, "email", None)] if k]
+        if keys:
+            conds = []
+            for key in keys:
+                conds.append(Presupuesto.responsable_actual.ilike(f"%{key}%"))
+                conds.append(Presupuesto.gestor.ilike(f"%{key}%"))
+            own = base_query(db).filter(or_(*conds), Presupuesto.estado.notin_(list(CLOSED_STATES))).all()
+            pedido_counts = enrich_risk(db, own)
+            today = date.today()
+            counters["hoy"] = sum(1 for r in own if (
+                (r.fecha_limite_siguiente_accion and r.fecha_limite_siguiente_accion <= today) or
+                r.prioridad_calculada in {"Rojo", "Crítico"} or
+                (r.fecha_aceptacion and not pedido_counts.get(r.id, 0)) or r.incidencia))
+    return counters
 
 
 @app.get("/search")
@@ -1524,22 +1517,44 @@ def mark_all_read(db: Session = Depends(get_db), user: Usuario = Depends(get_cur
     count = marcar_todas_leidas(db, user.id)
     return {"marcadas": count}
 
+@app.post("/notificaciones/limpiar-antiguas")
+def limpiar_notificaciones(request: Request, db: Session = Depends(get_db)):
+    require_system_manager(request)
+    count = limpiar_notificaciones_antiguas(db, dias=30)
+    return {"eliminadas": count}
+
 @app.get("/dashboard")
-def dashboard(db: Session = Depends(get_db)):
-    return build_dashboard_payload(db)
+def dashboard(request: Request, db: Session = Depends(get_db)):
+    user = getattr(request.state, "user", None)
+    gestor = None
+    if user and user_role(user) != ADMIN_ROLE:
+        gestor = user.nombre
+    return build_dashboard_payload(db, gestor=gestor)
 
 @app.get("/riesgo")
-def riesgo(db: Session = Depends(get_db)):
-    return get_risky_rows(db)
+def riesgo(request: Request, db: Session = Depends(get_db)):
+    rows = get_risky_rows(db)
+    user = getattr(request.state, "user", None)
+    if user and user_role(user) != ADMIN_ROLE:
+        rows = [r for r in rows if r.get("gestor") == user.nombre]
+    return rows
 
 @app.get("/hoy")
-def hoy(db: Session = Depends(get_db)):
-    return get_today_rows(db)
+def hoy(request: Request, db: Session = Depends(get_db)):
+    rows = get_today_rows(db)
+    user = getattr(request.state, "user", None)
+    if user and user_role(user) != ADMIN_ROLE:
+        rows = [r for r in rows if r.get("gestor") == user.nombre]
+    return rows
 
 
 @app.get("/aceptados-sin-pedido")
-def aceptados_sin_pedido(db: Session = Depends(get_db)):
-    return get_accepted_without_order_rows(db)
+def aceptados_sin_pedido(request: Request, db: Session = Depends(get_db)):
+    rows = get_accepted_without_order_rows(db)
+    user = getattr(request.state, "user", None)
+    if user and user_role(user) != ADMIN_ROLE:
+        rows = [r for r in rows if r.get("gestor") == user.nombre]
+    return rows
 
 
 @app.get("/avisos")
@@ -1586,9 +1601,22 @@ def avisos_run_automatic(request: Request, db: Session = Depends(get_db)):
     return run_automatic_alert_checks(db)
 
 
+@app.post("/avisos/resumen-semanal")
+def trigger_weekly_summary(request: Request, db: Session = Depends(get_db)):
+    require_system_manager(request)
+    return send_weekly_summary(db)
+
+
 @app.get("/dinero-riesgo")
-def dinero_riesgo(db: Session = Depends(get_db)):
-    return money_at_risk(db)
+def dinero_riesgo(request: Request, db: Session = Depends(get_db)):
+    data = money_at_risk(db)
+    user = getattr(request.state, "user", None)
+    if user and user_role(user) != ADMIN_ROLE:
+        for bucket in data.get("buckets", {}).values():
+            bucket["items"] = [p for p in bucket.get("items", []) if p.get("gestor") == user.nombre]
+            bucket["count"] = len(bucket["items"])
+            bucket["importe"] = round(sum(float(p.get("importe", 0) or 0) for p in bucket["items"]), 2)
+    return data
 
 
 @app.post("/email/test")
@@ -1599,7 +1627,7 @@ def email_test(payload: EmailTestPayload, request: Request, db: Session = Depend
     text = "Email de prueba de PresuControl. Si recibes este correo, la configuración SMTP funciona."
     html = "<p>Email de prueba de <strong>PresuControl</strong>.</p><p>La configuración SMTP funciona.</p>"
     try:
-        return send_email("PresuControl · email de prueba", parse_recipients(recipients), text, html)
+        return send_email("PresuControl · email de prueba", parse_recipients(recipients), text, html, db=db)
     except Exception as exc:
         return {"sent": False, "reason": str(exc)}
 
@@ -2367,5 +2395,9 @@ def export_presupuestos_excel(
 # ==================== DASHBOARD EJECUTIVO ====================
 
 @app.get("/dashboard/ejecutivo")
-def dashboard_ejecutivo(db: Session = Depends(get_db)):
-    return build_executive_dashboard_payload(db)
+def dashboard_ejecutivo(request: Request, db: Session = Depends(get_db)):
+    user = getattr(request.state, "user", None)
+    gestor = None
+    if user and user_role(user) != ADMIN_ROLE:
+        gestor = user.nombre
+    return build_executive_dashboard_payload(db, gestor=gestor)

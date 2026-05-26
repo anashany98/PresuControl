@@ -341,6 +341,59 @@ export function Configuracion() {
 
           <div className="sections">
             <ListEditor title="Destinatarios" description="Emails que reciben los avisos operativos." value={data.emails_destino_avisos} onChange={v => setList('emails_destino_avisos', v)} />
+            <section className="card config-list-card" style={{ marginTop: 0 }}>
+              <div className="config-card-head">
+                <div>
+                  <h3>Gestores y emails</h3>
+                  <p>Asocia cada gestor con su email para recibir avisos personalizados.</p>
+                </div>
+              </div>
+              <div className="flex flex-col gap-2">
+                {Object.entries(data.gestores_emails || {}).length === 0 && (
+                  <span className="muted">Sin gestores configurados.</span>
+                )}
+                {Object.entries(data.gestores_emails || {}).map(([nombre, email]) => (
+                  <div key={nombre} className="flex items-center gap-2">
+                    <input className="input flex-1" value={nombre} readOnly disabled style={{ opacity: 0.7 }} />
+                    <input
+                      className="input flex-1"
+                      value={email as string}
+                      onChange={e => {
+                        const updated = { ...(data.gestores_emails || {}), [nombre]: e.target.value }
+                        setData({ ...data, gestores_emails: updated })
+                      }}
+                      placeholder="email@empresa.com"
+                    />
+                    <button
+                      className="btn danger small"
+                      onClick={() => {
+                        const updated = { ...(data.gestores_emails || {}) }
+                        delete updated[nombre]
+                        setData({ ...data, gestores_emails: updated })
+                      }}
+                    >✕</button>
+                  </div>
+                ))}
+                <div className="flex gap-2 mt-2">
+                  <select
+                    className="select"
+                    onChange={(e) => {
+                      const nombre = e.target.value
+                      if (nombre && !data.gestores_emails?.[nombre]) {
+                        setData({ ...data, gestores_emails: { ...(data.gestores_emails || {}), [nombre]: '' } })
+                      }
+                      e.target.value = ''
+                    }}
+                    defaultValue=""
+                  >
+                    <option value="" disabled>Añadir gestor...</option>
+                    {data.gestores.filter(g => !(data.gestores_emails || {})[g]).map(g => (
+                      <option key={g} value={g}>{g}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </section>
             <ListEditor title="Emails de escalado" description="Dirección o responsables para avisos que siguen sin resolverse." value={data.emails_escalado_avisos} onChange={v => setList('emails_escalado_avisos', v)} />
           </div>
 
@@ -363,16 +416,24 @@ export function Configuracion() {
           <section className="card">
             <div className="config-card-head">
               <div>
-                <h3>Estado SMTP</h3>
-                <p>La conexión SMTP se configura con variables de entorno del servidor.</p>
+                <h3>Configuración SMTP</h3>
+                <p>Configura los datos del servidor de correo saliente. También puedes usar variables de entorno.</p>
               </div>
               {data.smtp_configured ? <span className="badge verde"><CheckCircle2 size={13} />Configurado</span> : <span className="badge naranja"><AlertTriangle size={13} />Pendiente</span>}
             </div>
-            <div className="config-summary compact">
-              <StatusTile label="Host" value={data.smtp_host || 'Sin configurar'} tone={data.smtp_host ? 'ok' : 'warn'} />
-              <StatusTile label="Puerto" value={String(data.smtp_port)} />
-              <StatusTile label="Desde" value={data.smtp_from || 'Sin remitente'} tone={data.smtp_from ? 'ok' : 'warn'} />
-              <StatusTile label="TLS" value={data.smtp_tls ? 'Sí' : 'No'} />
+            <div className="form-grid two">
+              <Field label="Host SMTP"><input className="input" value={data.smtp_host || ''} onChange={e => set('smtp_host', e.target.value)} placeholder="smtp.office365.com" /></Field>
+              <Field label="Puerto"><input className="input" type="number" value={data.smtp_port || 587} onChange={e => set('smtp_port', Number(e.target.value))} /></Field>
+              <Field label="Usuario"><input className="input" value={data.smtp_user || ''} onChange={e => set('smtp_user', e.target.value)} placeholder="correo@empresa.com" /></Field>
+              <Field label="Contraseña"><input className="input" type="password" value={data.smtp_password || ''} onChange={e => set('smtp_password', e.target.value)} placeholder="••••••••" /></Field>
+              <Field label="Email remitente"><input className="input" value={data.smtp_from || ''} onChange={e => set('smtp_from', e.target.value)} placeholder="correo@empresa.com" /></Field>
+              <div className="field">
+                <label>TLS</label>
+                <select className="select" value={data.smtp_tls ? 'true' : 'false'} onChange={e => set('smtp_tls', e.target.value === 'true')}>
+                  <option value="true">Sí (recomendado)</option>
+                  <option value="false">No</option>
+                </select>
+              </div>
             </div>
             <button className="btn secondary small" style={{ marginTop: 14 }} onClick={sendTest}>Enviar email de prueba</button>
             {testEmail && <div className={testEmail.startsWith('Email') ? 'success' : 'notice'} style={{ marginTop: 12 }}>{testEmail}</div>}

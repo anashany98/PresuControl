@@ -1,21 +1,65 @@
-import { useState } from 'react'
+import { useRef, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronDown, ChevronRight, Save } from 'lucide-react'
 import { PageHeader } from '../components/PageHeader'
 import { OptionInput } from '../components/OptionInput'
 import { api, ESTADOS, isoDate, type Presupuesto } from '../utils/api'
+import { useAuth } from '../utils/auth'
 import { useToast } from '../utils/toast'
 import { useMetadataOptions } from '../utils/useMetadataOptions'
 
 type SectionKey = 'seguimiento' | 'pedidos' | 'control'
 
+function AutocompleteInput({ value, onChange, placeholder, field }: { value: string; onChange: (v: string) => void; placeholder: string; field: string }) {
+  const [suggestions, setSuggestions] = useState<string[]>([])
+  const [show, setShow] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (value.length < 2) { setSuggestions([]); return }
+    const timer = setTimeout(async () => {
+      try {
+        const res = await api.get<string[]>(`/metadata/autocomplete?field=${field}&q=${encodeURIComponent(value)}`)
+        setSuggestions(res || [])
+        setShow((res || []).length > 0)
+      } catch { setSuggestions([]) }
+    }, 200)
+    return () => clearTimeout(timer)
+  }, [value, field])
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) { if (ref.current && !ref.current.contains(e.target as Node)) setShow(false) }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <input className="input" value={value} onChange={e => { onChange(e.target.value); setShow(true) }} placeholder={placeholder} onFocus={() => value.length >= 2 && suggestions.length > 0 && setShow(true)} />
+      {show && suggestions.length > 0 && (
+        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10, background: 'white', border: '1px solid var(--border)', borderRadius: '0 0 8px 8px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', maxHeight: 200, overflowY: 'auto' }}>
+          {suggestions.map((s, i) => (
+            <div key={i} style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13, borderBottom: '1px solid #f3f4f6' }}
+              onClick={() => { onChange(s); setShow(false) }}
+              onMouseEnter={e => (e.target as HTMLElement).style.background = '#f9fafb'}
+              onMouseLeave={e => (e.target as HTMLElement).style.background = 'white'}
+            >{s}</div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function NuevoPresupuesto() {
   const navigate = useNavigate()
   const toast = useToast()
+  const { user } = useAuth()
   const metadataOptions = useMetadataOptions()
   const [form, setForm] = useState<Partial<Presupuesto> & { modificado_por?: string }>({
     estado: 'Pendiente de enviar',
     fecha_presupuesto: new Date().toISOString().slice(0, 10),
+    gestor: user?.nombre || '',
     pedido_proveedor_realizado: false,
     incidencia: false,
   })
@@ -35,7 +79,6 @@ export function NuevoPresupuesto() {
     if (!(form.numero_presupuesto || '').trim()) errs.numero_presupuesto = 'Obligatorio'
     if (!(form.cliente || '').trim()) errs.cliente = 'Obligatorio'
     if (!(form.obra_referencia || '').trim()) errs.obra_referencia = 'Obligatorio'
-    if (!(form.gestor || '').trim()) errs.gestor = 'Obligatorio'
     if (!form.importe && form.importe !== 0) errs.importe = 'Obligatorio'
     else if (Number(form.importe) <= 0) errs.importe = 'Debe ser > 0'
     if (!form.fecha_presupuesto) errs.fecha_presupuesto = 'Obligatorio'
@@ -77,16 +120,16 @@ export function NuevoPresupuesto() {
         </div>
         <div className={`field ${hasFieldError('cliente')}`}>
           <label>Cliente *</label>
-          <input className="input" value={form.cliente || ''} onChange={e => set('cliente', e.target.value)} placeholder="Nombre del cliente" />
+          <AutocompleteInput value={form.cliente || ''} onChange={v => set('cliente', v)} placeholder="Nombre del cliente" field="cliente" />
           {fieldErrors.cliente && <span className="field-error-msg">{fieldErrors.cliente}</span>}
         </div>
         <div className={`field ${hasFieldError('obra_referencia')}`}>
           <label>Obra / referencia *</label>
-          <input className="input" value={form.obra_referencia || ''} onChange={e => set('obra_referencia', e.target.value)} placeholder="Nombre de la obra" />
+          <AutocompleteInput value={form.obra_referencia || ''} onChange={v => set('obra_referencia', v)} placeholder="Nombre de la obra" field="obra_referencia" />
           {fieldErrors.obra_referencia && <span className="field-error-msg">{fieldErrors.obra_referencia}</span>}
         </div>
         <div className={`field ${hasFieldError('gestor')}`}>
-          <label>Gestor *</label>
+          <label>Gestor (asignado a ti)</label>
           <OptionInput className="input" options={metadataOptions.gestores} value={form.gestor || ''} onChange={e => set('gestor', e.target.value)} placeholder="Seleccionar gestor" />
           {fieldErrors.gestor && <span className="field-error-msg">{fieldErrors.gestor}</span>}
         </div>
@@ -125,7 +168,7 @@ export function NuevoPresupuesto() {
     <CollapsibleSection title="Pedido proveedor" expanded={expanded.pedidos} onToggle={() => toggle('pedidos')}>
       <p className="muted text-xs mb-3">Después de crear el presupuesto puedes añadir pedidos desde la pestaña "Pedidos" del detalle.</p>
       <div className="form-grid">
-        <div className="field"><label>Proveedor</label><OptionInput className="input" options={metadataOptions.proveedores} value={form.proveedor || ''} onChange={e => set('proveedor', e.target.value)} /></div>
+        <div className="field"><label>Proveedor</label><AutocompleteInput value={form.proveedor || ''} onChange={v => set('proveedor', v)} placeholder="Nombre del proveedor" field="proveedor" /></div>
         <div className="field"><label>Nº pedido proveedor</label><input className="input" value={form.numero_pedido_proveedor || ''} onChange={e => set('numero_pedido_proveedor', e.target.value)} /></div>
         <div className="field"><label>Fecha pedido</label><input className="input" type="date" value={isoDate(form.fecha_pedido_proveedor)} onChange={e => set('fecha_pedido_proveedor', e.target.value || null)} /></div>
         <div className="field"><label>Plazo proveedor</label><input className="input" type="date" value={isoDate(form.plazo_proveedor)} onChange={e => set('plazo_proveedor', e.target.value || null)} /></div>

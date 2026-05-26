@@ -1,9 +1,10 @@
-import { AlertTriangle, CheckCircle2, Clock3, Flame, Circle } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Clock3, Flame, Zap } from 'lucide-react'
 
 export function PriorityBadge({ value }: { value?: string }) {
   const key = (value || 'Verde').toLowerCase().replace('í', 'i')
-  const Icon = value === 'Crítico' ? Flame : value === 'Rojo' ? AlertTriangle : value === 'Naranja' ? Clock3 : value === 'Amarillo' ? Circle : CheckCircle2
-  return <span className={`badge ${key}`}><Icon size={13} />{value || 'Verde'}</span>
+  const Icon = value === 'Crítico' ? Flame : value === 'Rojo' ? AlertTriangle : value === 'Naranja' ? Clock3 : value === 'Amarillo' ? Zap : CheckCircle2
+  const animClass = value === 'Crítico' ? 'badge-pulse' : ''
+  return <span className={`badge ${key} ${animClass}`}><Icon size={13} />{value || 'Verde'}</span>
 }
 
 export function StateBadge({ value }: { value: string }) {

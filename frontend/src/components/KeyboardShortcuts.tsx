@@ -6,6 +6,10 @@ const SHORTCUTS = [
   { keys: 'N', description: 'Nuevo presupuesto' },
   { keys: 'Esc', description: 'Cerrar modal / cancelar' },
   { keys: '?', description: 'Mostrar esta ayuda' },
+  { keys: 'g d', description: 'Dashboard' },
+  { keys: 'g k', description: 'Kanban' },
+  { keys: 'g p', description: 'Presupuestos' },
+  { keys: 'g t', description: 'Mi trabajo' },
 ]
 
 export function useKeyboardShortcuts() {

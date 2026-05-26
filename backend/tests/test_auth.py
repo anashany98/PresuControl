@@ -3,7 +3,7 @@ import pytest
 from datetime import datetime, timezone, timedelta
 from unittest.mock import patch
 from app.models import Usuario
-from app.auth import hash_password, create_access_token, hash_reset_token
+from app.auth import hash_password, create_access_token
 
 
 # =============================================================================
@@ -170,107 +170,6 @@ class TestLogin:
             "password": "password12345",
         })
         assert response.status_code == 403
-
-
-# =============================================================================
-# PASSWORD RESET
-# =============================================================================
-
-class TestPasswordReset:
-
-    def test_request_reset_email_existe(self, monkeypatch, client, db_session):
-        """Solicitar reset para email existente genera token y devuelve ok."""
-        user = Usuario(
-            email="reset@test.com",
-            hashed_password=hash_password("password12345"),
-            nombre="Reset Test",
-            activo=True,
-            aprobado=True,
-        )
-        db_session.add(user)
-        db_session.commit()
-
-        monkeypatch.setattr("app.auth.AUTH_ENABLED", True)
-        with patch("app.main.send_email") as mock_send:
-            mock_send.return_value = True
-            response = client.post("/auth/password/request", json={
-                "email": "reset@test.com",
-            })
-        assert response.status_code == 200
-        assert response.json()["ok"] is True
-
-    def test_request_reset_email_no_existe_devuelve_ok(self, monkeypatch, client, db_session):
-        """Para no revelar si email existe, siempre devuelve ok aunque no exista."""
-        monkeypatch.setattr("app.auth.AUTH_ENABLED", True)
-        response = client.post("/auth/password/request", json={
-            "email": "noexiste@test.com",
-        })
-        assert response.status_code == 200
-        assert response.json()["ok"] is True
-
-    def test_reset_password_con_token_valido(self, monkeypatch, client, db_session):
-        """Reset con token válido funciona y nuevo password funciona."""
-        user = Usuario(
-            email="resettoken@test.com",
-            hashed_password=hash_password("password12345"),
-            nombre="ResetToken",
-            activo=True,
-            aprobado=True,
-        )
-        db_session.add(user)
-        db_session.commit()
-
-        import secrets
-        token = secrets.token_urlsafe(32)
-        token_hash = hash_reset_token(token)
-
-        user.reset_password_token_hash = token_hash
-        user.reset_password_expira_en = datetime.now(timezone.utc) + timedelta(hours=2)
-        db_session.commit()
-
-        monkeypatch.setattr("app.auth.AUTH_ENABLED", True)
-        response = client.post("/auth/password/reset", json={
-            "token": token,
-            "password": "newpassword456",
-        })
-        assert response.status_code == 200, response.json()
-        assert response.json()["ok"] is True
-
-    def test_reset_password_con_token_expirado(self, monkeypatch, client, db_session):
-        """Reset con token caducado devuelve 400."""
-        user = Usuario(
-            email="expired@test.com",
-            hashed_password=hash_password("password12345"),
-            nombre="Expired",
-            activo=True,
-            aprobado=True,
-        )
-        db_session.add(user)
-        db_session.commit()
-
-        import secrets
-        token = secrets.token_urlsafe(32)
-        token_hash = hash_reset_token(token)
-
-        user.reset_password_token_hash = token_hash
-        user.reset_password_expira_en = datetime.now(timezone.utc) - timedelta(hours=1)
-        db_session.commit()
-
-        monkeypatch.setattr("app.auth.AUTH_ENABLED", True)
-        response = client.post("/auth/password/reset", json={
-            "token": token,
-            "password": "newpassword456",
-        })
-        assert response.status_code == 400
-
-    def test_reset_password_con_token_invalido(self, monkeypatch, client, db_session):
-        """Reset con token que no existe devuelve 400."""
-        monkeypatch.setattr("app.auth.AUTH_ENABLED", True)
-        response = client.post("/auth/password/reset", json={
-            "token": "token_invalido_que_no_existe_en_db",
-            "password": "newpassword456",
-        })
-        assert response.status_code == 400
 
 
 # =============================================================================

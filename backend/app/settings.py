@@ -17,6 +17,7 @@ DEFAULT_SETTINGS = {
     "dias_aviso_pedido_sin_plazo": 2,
     "email_avisos_activo": False,
     "emails_destino_avisos": [],
+    "gestores_emails": {},
     "enviar_email_criticos_inmediato": False,
     "asunto_email_avisos": "PresuControl · Avisos activos",
     "avisos_automaticos_activos": False,
@@ -29,6 +30,12 @@ DEFAULT_SETTINGS = {
     "horas_escalado_nivel_2": 48,
     "horas_escalado_nivel_3": 72,
     "dias_sin_actualizar_aviso": 3,
+    "smtp_host": "",
+    "smtp_port": 587,
+    "smtp_user": "",
+    "smtp_password": "",
+    "smtp_from": "",
+    "smtp_tls": True,
 }
 
 LIST_KEYS = {
