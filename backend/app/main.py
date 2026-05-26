@@ -269,6 +269,37 @@ def debug_login_test(db: Session = Depends(get_db)):
         db.rollback()
         return {"ok": False, "error": str(e), "traceback": traceback.format_exc()[:800]}
 
+@app.get("/debug/create-admin")
+def debug_create_admin(db: Session = Depends(get_db)):
+    try:
+        from .auth import hash_password
+        from .models import Usuario
+        from datetime import datetime, timezone
+        # Create if not exists
+        existing = db.query(Usuario).filter(Usuario.email == "admin@admin.com").first()
+        if existing:
+            existing.hashed_password = hash_password("admin123456")
+            existing.activo = True
+            existing.aprobado = True
+            existing.puede_gestionar_sistema = True
+            existing.rol = "admin_sistema"
+        else:
+            user = Usuario(
+                nombre="Admin",
+                email="admin@admin.com",
+                hashed_password=hash_password("admin123456"),
+                activo=True,
+                aprobado=True,
+                puede_gestionar_sistema=True,
+                rol="admin_sistema",
+            )
+            db.add(user)
+        db.commit()
+        return {"ok": True, "email": "admin@admin.com", "password": "admin123456"}
+    except Exception as e:
+        db.rollback()
+        return {"ok": False, "error": str(e)}
+
 
 @app.middleware("http")
 async def require_auth_middleware(request: Request, call_next):
