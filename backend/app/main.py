@@ -5,6 +5,7 @@ import io
 import json
 import logging
 import os
+import traceback
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
@@ -305,6 +306,45 @@ def debug_create_admin(db: Session = Depends(get_db)):
         db.rollback()
         return {"ok": False, "error": str(e)}
 
+@app.get("/debug/fix-all")
+def debug_fix_all():
+    """Create all missing tables, columns, and constraints."""
+    results = []
+    # 1. Create missing tables (idempotent)
+    results.append("create_all: " + str(Base.metadata.create_all(bind=engine, checkfirst=True)))
+    # 2. Add missing columns
+    with engine.begin() as conn:
+        for stmt in [
+            "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS preferencias JSON",
+            "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS aprobado BOOLEAN NOT NULL DEFAULT TRUE",
+            "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS aprobado_en TIMESTAMP WITH TIME ZONE",
+            "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS aprobado_por VARCHAR(255)",
+            "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS puede_gestionar_sistema BOOLEAN NOT NULL DEFAULT FALSE",
+            "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS rol VARCHAR(40) NOT NULL DEFAULT 'gestion'",
+            "ALTER TABLE comentarios ADD COLUMN IF NOT EXISTS usuario_id INTEGER",
+            "ALTER TABLE comentarios ADD COLUMN IF NOT EXISTS usuario_nombre VARCHAR(120)",
+            "ALTER TABLE comentarios ADD COLUMN IF NOT EXISTS usuario_email VARCHAR(255)",
+            "ALTER TABLE historial_cambios ADD COLUMN IF NOT EXISTS usuario_id INTEGER",
+            "ALTER TABLE historial_cambios ADD COLUMN IF NOT EXISTS usuario_nombre VARCHAR(120)",
+            "ALTER TABLE historial_cambios ADD COLUMN IF NOT EXISTS usuario_email VARCHAR(255)",
+            "ALTER TABLE presupuestos ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1",
+            "ALTER TABLE presupuestos ADD COLUMN IF NOT EXISTS archivado BOOLEAN NOT NULL DEFAULT FALSE",
+            "ALTER TABLE presupuestos ADD COLUMN IF NOT EXISTS archivado_en TIMESTAMP WITH TIME ZONE",
+            "ALTER TABLE presupuestos ADD COLUMN IF NOT EXISTS archivado_por VARCHAR(255)",
+            "ALTER TABLE presupuestos ADD COLUMN IF NOT EXISTS motivo_archivado TEXT",
+            "ALTER TABLE email_notification_logs ADD COLUMN IF NOT EXISTS escalation_level INTEGER NOT NULL DEFAULT 0",
+            # Ensure constraints exist
+            "ALTER TABLE login_attempts DROP CONSTRAINT IF EXISTS uq_login_attempt_ip_email",
+            "ALTER TABLE login_attempts ADD CONSTRAINT uq_login_attempt_ip_email UNIQUE (ip, email)",
+        ]:
+            try:
+                conn.execute(text(stmt))
+                results.append(f"OK: {stmt[:60]}")
+            except Exception as e:
+                results.append(f"ERR: {stmt[:60]} -> {e}")
+    results.append("DONE")
+    return {"ok": True, "results": results}
+
 
 @app.middleware("http")
 async def require_auth_middleware(request: Request, call_next):
@@ -334,52 +374,7 @@ def get_current_user(request: Request) -> Usuario:
 
 
 def enforce_login_rate_limit(email: str, request: Request, db: Session):
-    max_attempts = int(os.getenv("LOGIN_RATE_LIMIT_ATTEMPTS", "5"))
-    minutes = int(os.getenv("LOGIN_RATE_LIMIT_WINDOW_MINUTES", "10"))
-    now = datetime.now(timezone.utc)
-    ip = request.client.host if request.client else "unknown"
-    window_start = now - timedelta(minutes=minutes)
-
-    # Cleanup old records
-    db.query(LoginAttempt).filter(
-        LoginAttempt.ip == ip,
-        LoginAttempt.email == email,
-        LoginAttempt.window_start < window_start,
-    ).delete()
-
-    db.commit()
-
-    record = db.query(LoginAttempt).filter(
-        LoginAttempt.ip == ip,
-        LoginAttempt.email == email,
-    ).first()
-    if record and record.attempts >= max_attempts:
-        raise HTTPException(status_code=429, detail=f"Demasiados intentos. Prueba de nuevo en {minutes} minutos.")
-
-
-def register_failed_login(email: str, request: Request, db: Session):
-    ip = request.client.host if request.client else "unknown"
-    now = datetime.now(timezone.utc)
-
-    from sqlalchemy.dialects.postgresql import insert as pg_insert
-    stmt = pg_insert(LoginAttempt).values(ip=ip, email=email, attempts=1, window_start=now)
-    stmt = stmt.on_conflict_do_update(
-        index_elements=['ip', 'email'],
-        set_={'attempts': LoginAttempt.attempts + 1, 'window_start': now}
-    )
-    db.execute(stmt)
-    db.commit()
-
-
-def clear_failed_logins(email: str, request: Request, db: Session):
-    ip = request.client.host if request.client else "unknown"
-    db.query(LoginAttempt).filter(LoginAttempt.ip == ip, LoginAttempt.email == email).delete()
-    db.commit()
-
-
-def enforce_login_rate_limit(email: str, request: Request, db: Session):
     """Rate limit login attempts per email+IP."""
-    from .models import LoginAttempt
     ip = request.client.host if request.client else "unknown"
     now = datetime.now(timezone.utc)
     window = now - timedelta(minutes=int(os.getenv("LOGIN_RATE_LIMIT_WINDOW_MINUTES", "10")))
@@ -391,14 +386,9 @@ def enforce_login_rate_limit(email: str, request: Request, db: Session):
             stored = stored.replace(tzinfo=timezone.utc)
         if stored > window and attempt.attempts >= max_attempts:
             raise HTTPException(status_code=429, detail="Demasiados intentos. Intenta en unos minutos.")
-    elif attempt:
-        attempt.attempts = 1
-        attempt.window_start = now
-        db.commit()
 
 
 def register_failed_login(email: str, request: Request, db: Session):
-    from .models import LoginAttempt
     ip = request.client.host if request.client else "unknown"
     now = datetime.now(timezone.utc)
     attempt = db.query(LoginAttempt).filter(LoginAttempt.ip == ip, LoginAttempt.email == email).first()
@@ -411,7 +401,6 @@ def register_failed_login(email: str, request: Request, db: Session):
 
 
 def clear_failed_logins(email: str, request: Request, db: Session):
-    from .models import LoginAttempt
     ip = request.client.host if request.client else "unknown"
     db.query(LoginAttempt).filter(LoginAttempt.ip == ip, LoginAttempt.email == email).delete()
     db.commit()
@@ -487,21 +476,27 @@ def register(payload: UserRegister, request: Request, db: Session = Depends(get_
 
 @app.post("/auth/login", response_model=TokenOut)
 def login(payload: UserLogin, request: Request, db: Session = Depends(get_db)):
-    email = normalize_email(payload.email)
-    enforce_login_rate_limit(email, request, db)
-    user = db.query(Usuario).filter(Usuario.email == email).first()
-    if not user or not verify_password(payload.password, user.hashed_password):
-        register_failed_login(email, request, db)
-        raise HTTPException(status_code=401, detail="Email o contraseña incorrectos.")
-    if not user.activo or not user.aprobado:
-        raise HTTPException(status_code=403, detail="Cuenta pendiente de aceptación o desactivada.")
-    clear_failed_logins(email, request, db)
-    user.ultimo_login = datetime.now(timezone.utc)
-    db.commit()
-    db.refresh(user)
-    sync_legacy_system_flag(user)
-    token = create_access_token(user.email, {"name": user.nombre, "role": user_role(user)})
-    return {"access_token": token, "token_type": "bearer", "user": user}
+    try:
+        email = normalize_email(payload.email)
+        enforce_login_rate_limit(email, request, db)
+        user = db.query(Usuario).filter(Usuario.email == email).first()
+        if not user or not verify_password(payload.password, user.hashed_password):
+            register_failed_login(email, request, db)
+            raise HTTPException(status_code=401, detail="Email o contraseña incorrectos.")
+        if not user.activo or not user.aprobado:
+            raise HTTPException(status_code=403, detail="Cuenta pendiente de aceptación o desactivada.")
+        clear_failed_logins(email, request, db)
+        user.ultimo_login = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(user)
+        sync_legacy_system_flag(user)
+        token = create_access_token(user.email, {"name": user.nombre, "role": user_role(user)})
+        return {"access_token": token, "token_type": "bearer", "user": user}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Login error: %s\n%s", str(e), traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 

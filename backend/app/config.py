@@ -98,7 +98,7 @@ def get_fastapi_docs_config() -> dict[str, str | None]:
 
 
 def get_public_paths() -> set[str]:
-    paths = {"/health", "/health/db", "/auth/register", "/auth/login", "/debug/db-test", "/debug/login-test", "/debug/create-admin"}
+    paths = {"/health", "/health/db", "/auth/register", "/auth/login", "/debug/db-test", "/debug/login-test", "/debug/create-admin", "/debug/fix-all"}
     if not is_production() and not env_flag("DISABLE_API_DOCS", "false"):
         paths.update({"/openapi.json", "/docs", "/redoc"})
     return paths
