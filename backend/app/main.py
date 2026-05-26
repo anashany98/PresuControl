@@ -210,7 +210,7 @@ if os.getenv("RUN_DEFENSIVE_MIGRATIONS", "true").lower() in {"1", "true", "yes",
 PUBLIC_PATHS = get_public_paths()
 
 
-# Temporary debug: auto-repair missing DB columns
+# Temporary debug: auto-repair missing DB columns and tables
 import traceback
 @app.get("/debug/db-test")
 def debug_db_test(db: Session = Depends(get_db)):
@@ -219,12 +219,17 @@ def debug_db_test(db: Session = Depends(get_db)):
         count = db.query(Usuario).count()
         return {"ok": True, "user_count": count}
     except Exception as e:
-        # Rollback failed session transaction
         db.rollback()
-        # Fix missing columns via raw connection (separate from session)
+        # Create all missing tables + add missing columns
+        Base.metadata.create_all(bind=engine, checkfirst=True)
         with engine.begin() as conn:
             for stmt in [
                 "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS preferencias JSON",
+                "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS aprobado BOOLEAN NOT NULL DEFAULT TRUE",
+                "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS aprobado_en TIMESTAMP WITH TIME ZONE",
+                "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS aprobado_por VARCHAR(255)",
+                "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS puede_gestionar_sistema BOOLEAN NOT NULL DEFAULT FALSE",
+                "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS rol VARCHAR(40) NOT NULL DEFAULT 'gestion'",
                 "ALTER TABLE comentarios ADD COLUMN IF NOT EXISTS usuario_id INTEGER",
                 "ALTER TABLE comentarios ADD COLUMN IF NOT EXISTS usuario_nombre VARCHAR(120)",
                 "ALTER TABLE comentarios ADD COLUMN IF NOT EXISTS usuario_email VARCHAR(255)",
@@ -236,21 +241,33 @@ def debug_db_test(db: Session = Depends(get_db)):
                 "ALTER TABLE presupuestos ADD COLUMN IF NOT EXISTS archivado_en TIMESTAMP WITH TIME ZONE",
                 "ALTER TABLE presupuestos ADD COLUMN IF NOT EXISTS archivado_por VARCHAR(255)",
                 "ALTER TABLE presupuestos ADD COLUMN IF NOT EXISTS motivo_archivado TEXT",
-                "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS aprobado BOOLEAN NOT NULL DEFAULT TRUE",
-                "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS aprobado_en TIMESTAMP WITH TIME ZONE",
-                "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS aprobado_por VARCHAR(255)",
-                "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS puede_gestionar_sistema BOOLEAN NOT NULL DEFAULT FALSE",
-                "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS rol VARCHAR(40) NOT NULL DEFAULT 'gestion'",
                 "ALTER TABLE email_notification_logs ADD COLUMN IF NOT EXISTS escalation_level INTEGER NOT NULL DEFAULT 0",
             ]:
                 conn.execute(text(stmt))
-        # Retry with fresh session
-        try:
-            from .models import Usuario
-            count = db.query(Usuario).count()
-            return {"ok": True, "user_count": count, "fixed": True}
-        except Exception as e2:
-            return {"ok": False, "error": str(e2), "original_error": str(e)[:200], "traceback": traceback.format_exc()[:600]}
+        from .models import Usuario
+        count = db.query(Usuario).count()
+        return {"ok": True, "user_count": count, "fixed": True}
+
+@app.get("/debug/login-test")
+def debug_login_test(db: Session = Depends(get_db)):
+    try:
+        from .auth import normalize_email, verify_password
+        from .models import Usuario, LoginAttempt
+        email = normalize_email("admin@admin.com")
+        # Test each step
+        ip = "debug"
+        # 1. login_attempts table
+        la_count = db.query(LoginAttempt).count()
+        # 2. query user
+        user = db.query(Usuario).filter(Usuario.email == email).first()
+        if not user:
+            return {"ok": False, "step": "user_query", "error": "User not found"}
+        # 3. verify password
+        pw_ok = verify_password("123123123123", user.hashed_password)
+        return {"ok": True, "user_found": True, "user_email": user.email, "password_ok": pw_ok, "login_attempts_count": la_count}
+    except Exception as e:
+        db.rollback()
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()[:800]}
 
 
 @app.middleware("http")
