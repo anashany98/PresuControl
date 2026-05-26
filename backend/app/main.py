@@ -174,7 +174,11 @@ if os.getenv("RUN_CREATE_ALL", "false").lower() in {"1", "true", "yes", "on"}:
 
 
 def ensure_schema_compatibility():
-    """Pequeña migración defensiva para instalaciones que ya venían de V1/V2 sin Alembic."""
+    """Defensive migration: ensure all tables exist (idempotent via create_all checkfirst).
+    Also add columns that may be missing from pre-Alembic installs."""
+    # Create any missing tables (idempotent - only creates if not exists)
+    Base.metadata.create_all(bind=engine, checkfirst=True)
+    # Add columns that may be missing from older installs
     with engine.begin() as conn:
         conn.execute(text("ALTER TABLE presupuestos ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1"))
         conn.execute(text("ALTER TABLE presupuestos ADD COLUMN IF NOT EXISTS motivo_cancelacion_rechazo TEXT"))
@@ -198,7 +202,7 @@ def ensure_schema_compatibility():
         conn.execute(text("ALTER TABLE email_notification_logs ADD COLUMN IF NOT EXISTS escalation_level INTEGER NOT NULL DEFAULT 0"))
 
 
-if os.getenv("RUN_DEFENSIVE_MIGRATIONS", "false").lower() in {"1", "true", "yes", "on"}:
+if os.getenv("RUN_DEFENSIVE_MIGRATIONS", "true").lower() in {"1", "true", "yes", "on"}:
     ensure_schema_compatibility()
 
 
