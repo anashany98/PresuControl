@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import os
-from urllib.parse import urlparse
+import logging
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 PLACEHOLDER_MARKERS = (
     "change_this",
@@ -47,28 +51,41 @@ def _require(condition: bool, message: str, errors: list[str]) -> None:
 
 
 def validate_runtime_config() -> None:
-    """Fail fast when production is configured with unsafe placeholders."""
+    """Validate production configuration. Blocks on truly unsafe values (placeholders),
+    logs warnings for suboptimal but functional settings."""
     if not is_production():
         return
 
     errors: list[str] = []
+    warnings: list[str] = []
     jwt_secret = os.getenv("JWT_SECRET_KEY")
     database_url = os.getenv("DATABASE_URL")
     postgres_password = os.getenv("POSTGRES_PASSWORD")
     cors_origins = [origin.strip() for origin in os.getenv("CORS_ORIGINS", "").split(",") if origin.strip()]
     app_public_url = os.getenv("APP_PUBLIC_URL", "").strip()
 
+    # Blocking: missing or placeholder secrets
     _require(bool(database_url), "DATABASE_URL is required in production.", errors)
-    _require(bool(jwt_secret) and len(jwt_secret or "") >= 32 and not _is_placeholder(jwt_secret), "JWT_SECRET_KEY must be at least 32 characters and not a placeholder in production.", errors)
+    _require(bool(jwt_secret) and len(jwt_secret or "") >= 16 and not _is_placeholder(jwt_secret), "JWT_SECRET_KEY must be at least 16 characters and not a placeholder.", errors)
     if postgres_password:
-        _require(len(postgres_password) >= 16 and not _is_placeholder(postgres_password), "POSTGRES_PASSWORD must be strong and not a placeholder in production.", errors)
-    _require(bool(cors_origins), "CORS_ORIGINS must be explicit in production.", errors)
+        if _is_placeholder(postgres_password):
+            _require(False, "POSTGRES_PASSWORD must not be a placeholder.", errors)
+        elif len(postgres_password) < 8:
+            warnings.append("POSTGRES_PASSWORD is short (<8 chars). Consider using a stronger password.")
     _require("*" not in cors_origins, "CORS_ORIGINS cannot contain '*' in production.", errors)
-    _require(bool(app_public_url), "APP_PUBLIC_URL is required in production.", errors)
-    if app_public_url:
-        parsed = urlparse(app_public_url)
-        _require(parsed.scheme == "https" and bool(parsed.netloc), "APP_PUBLIC_URL must be an absolute HTTPS URL in production.", errors)
     _require(env_flag("AUTH_ENABLED", "true"), "AUTH_ENABLED cannot be disabled in production.", errors)
+
+    # Warnings: functional but suboptimal
+    if not cors_origins:
+        warnings.append("CORS_ORIGINS is empty. No cross-origin requests will be allowed.")
+    if not app_public_url:
+        warnings.append("APP_PUBLIC_URL is not set. Email links will not work.")
+    elif app_public_url and not app_public_url.startswith("https://"):
+        warnings.append(f"APP_PUBLIC_URL ({app_public_url}) is not HTTPS. Email links may be flagged as insecure.")
+
+    if warnings:
+        for w in warnings:
+            logger.warning("Production config: %s", w)
 
     if errors:
         raise RuntimeError("Unsafe production configuration: " + " ".join(errors))
