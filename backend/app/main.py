@@ -210,7 +210,7 @@ if os.getenv("RUN_DEFENSIVE_MIGRATIONS", "true").lower() in {"1", "true", "yes",
 PUBLIC_PATHS = get_public_paths()
 
 
-# Temporary debug: expose raw errors and auto-fix DB
+# Temporary debug: auto-repair missing DB columns
 import traceback
 @app.get("/debug/db-test")
 def debug_db_test(db: Session = Depends(get_db)):
@@ -219,7 +219,9 @@ def debug_db_test(db: Session = Depends(get_db)):
         count = db.query(Usuario).count()
         return {"ok": True, "user_count": count}
     except Exception as e:
-        # Auto-fix: add missing columns
+        # Rollback failed session transaction
+        db.rollback()
+        # Fix missing columns via raw connection (separate from session)
         with engine.begin() as conn:
             for stmt in [
                 "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS preferencias JSON",
@@ -241,15 +243,14 @@ def debug_db_test(db: Session = Depends(get_db)):
                 "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS rol VARCHAR(40) NOT NULL DEFAULT 'gestion'",
                 "ALTER TABLE email_notification_logs ADD COLUMN IF NOT EXISTS escalation_level INTEGER NOT NULL DEFAULT 0",
             ]:
-                try:
-                    conn.execute(text(stmt))
-                except Exception:
-                    pass
+                conn.execute(text(stmt))
+        # Retry with fresh session
         try:
+            from .models import Usuario
             count = db.query(Usuario).count()
             return {"ok": True, "user_count": count, "fixed": True}
         except Exception as e2:
-            return {"ok": False, "error": str(e2), "original_error": str(e), "traceback": traceback.format_exc()}
+            return {"ok": False, "error": str(e2), "original_error": str(e)[:200], "traceback": traceback.format_exc()[:600]}
 
 
 @app.middleware("http")
