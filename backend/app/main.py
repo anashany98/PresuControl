@@ -209,6 +209,18 @@ if os.getenv("RUN_DEFENSIVE_MIGRATIONS", "true").lower() in {"1", "true", "yes",
 PUBLIC_PATHS = get_public_paths()
 
 
+# Temporary debug: expose raw errors
+import traceback
+@app.get("/debug/db-test")
+def debug_db_test(db: Session = Depends(get_db)):
+    try:
+        from .models import Usuario
+        count = db.query(Usuario).count()
+        return {"ok": True, "user_count": count}
+    except Exception as e:
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+
+
 @app.middleware("http")
 async def require_auth_middleware(request: Request, call_next):
     if not is_auth_enabled() or request.method == "OPTIONS":
