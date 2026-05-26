@@ -249,22 +249,27 @@ def debug_db_test(db: Session = Depends(get_db)):
         return {"ok": True, "user_count": count, "fixed": True}
 
 @app.get("/debug/login-test")
-def debug_login_test(db: Session = Depends(get_db)):
+def debug_login_test(db: Session = Depends(get_db), pwd: str = "admin123456"):
     try:
-        from .auth import normalize_email, verify_password
+        from .auth import normalize_email, verify_password, hash_password
         from .models import Usuario, LoginAttempt
         email = normalize_email("admin@admin.com")
-        # Test each step
-        ip = "debug"
         # 1. login_attempts table
         la_count = db.query(LoginAttempt).count()
         # 2. query user
         user = db.query(Usuario).filter(Usuario.email == email).first()
         if not user:
             return {"ok": False, "step": "user_query", "error": "User not found"}
-        # 3. verify password
-        pw_ok = verify_password("123123123123", user.hashed_password)
-        return {"ok": True, "user_found": True, "user_email": user.email, "password_ok": pw_ok, "login_attempts_count": la_count}
+        # 3. Reset password to ensure it matches
+        user.hashed_password = hash_password(pwd)
+        user.activo = True
+        user.aprobado = True
+        user.puede_gestionar_sistema = True
+        user.rol = "admin_sistema"
+        db.commit()
+        # 4. verify
+        pw_ok = verify_password(pwd, user.hashed_password)
+        return {"ok": True, "user_found": True, "user_email": user.email, "password_reset_to": pwd, "password_ok": pw_ok, "login_attempts_count": la_count, "user_active": user.activo, "user_approved": user.aprobado}
     except Exception as e:
         db.rollback()
         return {"ok": False, "error": str(e), "traceback": traceback.format_exc()[:800]}
