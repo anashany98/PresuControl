@@ -96,6 +96,18 @@ class TestImportPreviewBasics:
         assert data["validos"] == 2
         assert data["nuevos"] == 2
 
+    def test_preview_returns_column_mapping_metadata(self, monkeypatch, client, db_session):
+        monkeypatch.setattr("app.auth.AUTH_ENABLED", True)
+        _create_admin(db_session)
+        rows = [_valid_row("IMP-MAP-001")]
+        response = _upload_file(client, rows, headers=_auth_header("admin@test.com"))
+        assert response.status_code == 200
+        data = response.json()
+        assert "columnas" in data
+        assert "mapeo" in data
+        assert "numero_presupuesto" in data["columnas"]
+        assert data["mapeo"]["numero_presupuesto"] == "numero_presupuesto"
+
     def test_preview_empty_file(self, monkeypatch, client, db_session):
         monkeypatch.setattr("app.auth.AUTH_ENABLED", True)
         _create_admin(db_session)
@@ -136,6 +148,17 @@ class TestImportDuplicateDetection:
         data = response.json()
         assert len(data["duplicados_archivo"]) >= 1
 
+    def test_preview_detects_existing_when_using_order_number_fallback(self, monkeypatch, client, db_session):
+        monkeypatch.setattr("app.auth.AUTH_ENABLED", True)
+        _create_admin(db_session)
+        _create_presupuesto(db_session, "PED-EXIST-001")
+        rows = [_valid_row("", numero_pedido_cliente="PED-EXIST-001")]
+        response = _upload_file(client, rows, headers=_auth_header("admin@test.com"))
+        assert response.status_code == 200
+        data = response.json()
+        assert "PED-EXIST-001" in data["duplicados_bd"]
+        assert data["nuevos"] == 0
+
 
 class TestImportEdgeCases:
     """Casos límite de importación."""
@@ -148,6 +171,17 @@ class TestImportEdgeCases:
         data = response.json()
         assert len(data["errores"]) >= 1
 
+    def test_preview_rejects_rows_without_any_identifier(self, monkeypatch, client, db_session):
+        monkeypatch.setattr("app.auth.AUTH_ENABLED", True)
+        _create_admin(db_session)
+        rows = [_valid_row("")]
+        response = _upload_file(client, rows, headers=_auth_header("admin@test.com"))
+        assert response.status_code == 200
+        data = response.json()
+        assert data["validos"] == 0
+        assert data["nuevos"] == 0
+        assert any("numero_presupuesto" in str(e.get("error", "")) for e in data["errores"])
+
     def test_preview_rejects_negative_importe(self, monkeypatch, client, db_session):
         monkeypatch.setattr("app.auth.AUTH_ENABLED", True)
         _create_admin(db_session)
@@ -158,3 +192,41 @@ class TestImportEdgeCases:
         # Importes negativos deben ser rechazados
         assert len(data["errores"]) >= 1
         assert any("negativo" in str(e.get("error","")).lower() for e in data["errores"])
+
+    def test_preview_accepts_mixed_optional_datetime_columns(self, monkeypatch, client, db_session):
+        monkeypatch.setattr("app.auth.AUTH_ENABLED", True)
+        _create_admin(db_session)
+
+        from openpyxl import Workbook
+
+        wb = Workbook()
+        ws = wb.active
+        ws.append([
+            "numero_presupuesto", "cliente", "obra_referencia", "gestor",
+            "fecha_presupuesto", "importe", "estado", "fecha_aceptacion",
+            "fecha_pedido_proveedor",
+        ])
+        ws.append([
+            "IMP-DT-001", "Cliente Test", "Obra Test", "Gestor Test",
+            date(2026, 1, 26), 1000, "Pendiente de enviar", date(2026, 1, 27),
+            "pendiente proveedor",
+        ])
+        ws.append([
+            "IMP-DT-002", "Cliente Test", "Obra Test", "Gestor Test",
+            date(2026, 1, 26), 1000, "Pendiente de enviar", date(2026, 1, 27),
+            datetime(2026, 1, 28, 0, 0),
+        ])
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+
+        response = client.post(
+            "/import/preview?mode=create_only",
+            files={"file": ("mixed_dates.xlsx", buf.read(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            headers=_auth_header("admin@test.com"),
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["validos"] == 2
+        assert data["errores"] == []

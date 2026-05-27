@@ -31,7 +31,7 @@ def test_import_csv_creates_presupuestos(client, db_session):
         "TEST-002,Otro Cliente,Pendiente de enviar,2500.00,2026-02-01\n"
     )
     files = {"file": ("test.csv", io.BytesIO(csv_content.encode()), "text/csv")}
-    response = client.post("/api/v1/import/preview", files=files)
+    response = client.post("/import/preview", files=files)
     assert response.status_code == 200
     data = response.json()
     assert data["total_filas"] == 2
@@ -52,7 +52,6 @@ def test_import_csv_upsert_existing(client, db_session):
         version=1,
         prioridad_calculada="Verde",
         dias_parado=0,
-        creado_por=user.id,
     )
     db_session.add(p)
     db_session.commit()
@@ -62,7 +61,7 @@ def test_import_csv_upsert_existing(client, db_session):
         "TEST-001,Cliente Nuevo Actualizado,Borrador,2000.00,2026-01-15,1\n"
     )
     files = {"file": ("test.csv", io.BytesIO(csv_content.encode()), "text/csv")}
-    response = client.post("/api/v1/import/preview?mode=upsert", files=files)
+    response = client.post("/import/preview?mode=upsert", files=files)
     assert response.status_code == 200
     data = response.json()
     assert data["actualizables"] == 1

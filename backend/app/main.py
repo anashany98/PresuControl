@@ -77,6 +77,7 @@ from .routers.presupuestos import router as presupuestos_router
 from .routers.dashboard import router as dashboard_router
 from .logging_middleware import StructuredLoggingMiddleware
 from .services.metadata_service import build_metadata_options, distinct_column_values, normalize_option_list, provider_catalog_values
+from .cache import cache
 
 # Configure logging for production
 logging.basicConfig(
@@ -509,10 +510,17 @@ def read_settings(request: Request, db: Session = Depends(get_db)):
 @app.put("/settings", response_model=SettingsOut)
 def save_settings(payload: SettingsUpdate, request: Request, db: Session = Depends(get_db)):
     require_system_manager(request)
+    logger = logging.getLogger("presucontrol.settings")
     try:
-        return update_settings(db, payload.model_dump(exclude_unset=True))
+        update_data = payload.model_dump(exclude_unset=True)
+        logger.info("guardando settings: %s", list(update_data.keys()))
+        return update_settings(db, update_data)
     except ValueError as exc:
+        logger.warning("error validacion settings: %s", exc)
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("error inesperado guardando settings")
+        raise HTTPException(status_code=500, detail=f"Error interno: {exc}") from exc
 
 
 @app.get("/metadata/options")
@@ -1747,10 +1755,19 @@ DATE_FIELDS = {
 }
 
 def row_to_payload(row: pd.Series) -> dict[str, Any]:
+    def clean_identifier(value: Any) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, float) and value == int(value):
+            return str(int(value)).strip()
+        return str(value).strip()
+
     def clean(v):
         if pd.isna(v):
             return None
         if isinstance(v, pd.Timestamp):
+            return v.date()
+        if isinstance(v, datetime):
             return v.date()
         return v
     data = {k: clean(row.get(k)) for k in REQUIRED_IMPORT_COLUMNS.keys()}
@@ -1769,18 +1786,22 @@ def row_to_payload(row: pd.Series) -> dict[str, Any]:
             if val is not None:
                 data[field] = val
     # Fallback for numero_presupuesto (after optional fields are loaded)
-    if not data.get('numero_presupuesto'):
-        fallback = str(data.get('numero_pedido_cliente', '') or '')
-        data['numero_presupuesto'] = fallback if fallback else 'Sin numero'
+    if not clean_identifier(data.get('numero_presupuesto')):
+        fallback = clean_identifier(data.get('numero_pedido_cliente'))
+        if not fallback:
+            raise ValueError("numero_presupuesto es obligatorio si no hay numero_pedido_cliente.")
+        data['numero_presupuesto'] = fallback
     # Validate date fields: non-date strings → None
     for df_field in DATE_FIELDS:
         val = data.get(df_field)
-        if val is not None and not isinstance(val, date):
+        if isinstance(val, datetime):
+            data[df_field] = val.date()
+        elif val is not None and not isinstance(val, date):
             try:
                 if isinstance(val, (int, float)):
                     # Excel serial date number
                     from datetime import datetime as dt
-                    data[df_field] = dt(1899, 12, 30) + pd.Timedelta(days=int(val))
+                    data[df_field] = (dt(1899, 12, 30) + pd.Timedelta(days=int(val))).date()
                 else:
                     data[df_field] = pd.to_datetime(str(val), dayfirst=True).date()
             except Exception:
@@ -1807,6 +1828,24 @@ def row_to_payload(row: pd.Series) -> dict[str, Any]:
     if isinstance(data.get("incidencia"), str):
         data["incidencia"] = data["incidencia"].lower() in {"true", "1", "si", "sí", "yes"}
     return data
+
+
+def prepare_import_payloads(df: pd.DataFrame) -> tuple[list[tuple[int, pd.Series, dict[str, Any]]], list[dict[str, Any]]]:
+    prepared: list[tuple[int, pd.Series, dict[str, Any]]] = []
+    errors: list[dict[str, Any]] = []
+    for idx, row in df.iterrows():
+        try:
+            data = row_to_payload(row)
+            if isinstance(data.get("importe"), (int, float)) and data["importe"] < 0:
+                raise ValueError("El importe no puede ser negativo.")
+            prepared.append((int(idx), row, data))
+        except Exception as e:
+            errors.append({
+                "fila": int(idx) + 2,
+                "numero_presupuesto": str(row.get("numero_presupuesto", "")),
+                "error": str(getattr(e, "detail", e)),
+            })
+    return prepared, errors
 
 
 IMPORT_FIELD_LABELS: dict[str, str] = {
@@ -1875,22 +1914,19 @@ def import_preview(request: Request, file: UploadFile = File(...), db: Session =
             "columnas": columnas_originales,
             "mapeo": mapeo_auto,
         }
-    nums = [str(v).strip() for v in df["numero_presupuesto"].dropna().tolist()]
+    prepared_rows, errores = prepare_import_payloads(df)
+    nums = [str(data["numero_presupuesto"]).strip() for _, _, data in prepared_rows]
     seen = set()
     dup_file = sorted({n for n in nums if n in seen or seen.add(n)})
     existing_rows = db.query(Presupuesto).filter(Presupuesto.numero_presupuesto.in_(nums)).all()
     existing = {r.numero_presupuesto: r for r in existing_rows}
-    errores = []
     preview = []
     cambios_preview = []
     validos = 0
     nuevos = 0
     actualizables = 0
-    for idx, row in df.iterrows():
+    for idx, row, data in prepared_rows:
         try:
-            data = row_to_payload(row)
-            if isinstance(data.get("importe"), (int, float)) and data["importe"] < 0:
-                raise ValueError("El importe no puede ser negativo.")
             num = str(data["numero_presupuesto"]).strip()
             obj_existing = existing.get(num)
             if obj_existing:
@@ -1954,19 +1990,24 @@ def import_confirm(request: Request, file: UploadFile = File(...), db: Session =
             status_code=422,
             detail=f"{e.detail} Usa 'Simular y comparar' primero para ajustar el mapeo de columnas."
         )
-    nums = [str(v).strip() for v in df["numero_presupuesto"].dropna().tolist()]
+    prepared_rows, payload_errors = prepare_import_payloads(df)
+    nums = [str(data["numero_presupuesto"]).strip() for _, _, data in prepared_rows]
     existing_rows = db.query(Presupuesto).filter(Presupuesto.numero_presupuesto.in_(nums)).all()
     existing = {r.numero_presupuesto: r for r in existing_rows}
     inserted = 0
     updated = 0
-    skipped = []
+    skipped = [
+        {
+            "fila": error["fila"],
+            "numero_presupuesto": error.get("numero_presupuesto", ""),
+            "motivo": error["error"],
+        }
+        for error in payload_errors
+    ]
     seen = set()
     actor = current_actor(request)
-    for idx, row in df.iterrows():
+    for idx, row, data in prepared_rows:
         try:
-            data = row_to_payload(row)
-            if isinstance(data.get("importe"), (int, float)) and data["importe"] < 0:
-                raise ValueError("El importe no puede ser negativo.")
             num = str(data["numero_presupuesto"]).strip()
             if num in seen:
                 skipped.append({"fila": int(idx) + 2, "numero_presupuesto": num, "motivo": "Duplicado en archivo"})
@@ -2019,6 +2060,8 @@ def import_confirm(request: Request, file: UploadFile = File(...), db: Session =
         except Exception as e:
             skipped.append({"fila": int(idx) + 2, "numero_presupuesto": str(row.get("numero_presupuesto", "")), "motivo": str(getattr(e, "detail", e))})
     db.commit()
+    cache.invalidate("dashboard")
+    cache.invalidate("sidebar")
     return {"insertados": inserted, "actualizados": updated, "omitidos": skipped}
 
 
