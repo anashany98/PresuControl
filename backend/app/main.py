@@ -79,6 +79,8 @@ from .logging_middleware import StructuredLoggingMiddleware
 from .services.metadata_service import build_metadata_options, distinct_column_values, normalize_option_list, provider_catalog_values
 from .cache import cache
 
+ActionDict = dict[str, str]
+
 # Configure logging for production
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
@@ -625,12 +627,29 @@ def list_presupuestos_page(
     ocultar_cerrados: bool = True,
     sort_by: str | None = "ultima_actualizacion",
     sort_dir: str | None = "desc",
+    filtro_rapido: str | None = Query(None, pattern="^(sin_pedido|pedidos_vencidos|sin_proxima_accion)$"),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=10, le=200),
 ):
     q = apply_filters(base_query(db, include_archivados).options(selectinload(Presupuesto.pedidos)), search, estado, prioridad, gestor, proveedor, incidencia)
     if ocultar_cerrados:
         q = q.filter(Presupuesto.estado.notin_(list(CLOSED_STATES)))
+    if filtro_rapido == "sin_pedido":
+        q = q.filter(
+            Presupuesto.estado == "Aceptado - pendiente pedido proveedor",
+            ~Presupuesto.pedidos.any(),
+        )
+    elif filtro_rapido == "pedidos_vencidos":
+        q = q.join(PedidoProveedor).filter(
+            PedidoProveedor.estado_entrega != "completado",
+            PedidoProveedor.fecha_entrega_prevista < date.today(),
+        ).distinct()
+    elif filtro_rapido == "sin_proxima_accion":
+        q = q.filter(or_(
+            Presupuesto.siguiente_accion.is_(None),
+            Presupuesto.siguiente_accion == "",
+            Presupuesto.fecha_limite_siguiente_accion.is_(None),
+        ))
     total = q.count()
     importe_total = float(q.with_entities(func.coalesce(func.sum(Presupuesto.importe), 0)).scalar() or 0)
     q = apply_sort(q, sort_by, sort_dir)
@@ -1065,11 +1084,155 @@ def remove_proveedor_presupuesto(presupuesto_id: int, proveedor_id: int, request
     return {"ok": True}
 
 
+def _as_date(value: date | datetime | None) -> date | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    return value
+
+
+def _append_unique(values: list[str], value: str) -> None:
+    if value and value not in values:
+        values.append(value)
+
+
+def _serialize_pedido_minimo(pedido: PedidoProveedor) -> dict[str, Any]:
+    return {
+        "id": pedido.id,
+        "presupuesto_id": pedido.presupuesto_id,
+        "proveedor_id": pedido.proveedor_id,
+        "proveedor": pedido.proveedor,
+        "proveedor_nombre_snapshot": pedido.proveedor_nombre_snapshot,
+        "numero_pedido": pedido.numero_pedido,
+        "fecha_pedido": pedido.fecha_pedido,
+        "importe": float(pedido.importe) if pedido.importe is not None else None,
+        "estado_entrega": pedido.estado_entrega,
+        "fecha_entrega_prevista": pedido.fecha_entrega_prevista,
+        "fecha_entrega_real": pedido.fecha_entrega_real,
+        "observaciones": pedido.observaciones,
+        "creado_en": pedido.creado_en,
+        "actualizado_en": pedido.actualizado_en,
+    }
+
+
+def _presupuesto_tiene_pedido(obj: Presupuesto, pedido_count: int) -> bool:
+    return bool(
+        pedido_count
+        or obj.pedido_proveedor_realizado
+        or obj.proveedor
+        or obj.numero_pedido_proveedor
+        or obj.fecha_pedido_proveedor
+        or obj.fecha_prevista_entrega
+        or obj.plazo_proveedor
+    )
+
+
+def _build_operational_context(obj: Presupuesto, pedido_count: int, today: date) -> dict[str, Any]:
+    motivos: list[str] = []
+    faltantes: list[str] = []
+    accion: ActionDict = {"tipo": "abrir_detalle", "label": "Abrir detalle", "target_tab": "datos"}
+    has_order = _presupuesto_tiene_pedido(obj, pedido_count)
+    deadline = _as_date(obj.fecha_limite_siguiente_accion)
+
+    def set_action(tipo: str, label: str, target_tab: str, *, force: bool = False) -> None:
+        nonlocal accion
+        if force or accion["tipo"] == "abrir_detalle":
+            accion = {"tipo": tipo, "label": label, "target_tab": target_tab}
+
+    if obj.incidencia:
+        _append_unique(motivos, "Incidencia abierta")
+        set_action("resolver_incidencia", "Resolver incidencia", "datos", force=True)
+
+    accepted_without_order = bool(
+        (obj.fecha_aceptacion and not has_order)
+        or obj.estado == "Aceptado - pendiente pedido proveedor"
+    )
+    if accepted_without_order:
+        _append_unique(motivos, "Aceptado sin pedido proveedor")
+        _append_unique(faltantes, "pedido proveedor")
+        set_action("crear_pedido", "Crear pedido", "pedidos", force=True)
+
+    pedidos = list(getattr(obj, "pedidos", []) or [])
+    pedido_vencido = False
+    pedido_sin_fecha = False
+    pedido_sin_importe = False
+
+    for pedido in pedidos:
+        if pedido.estado_entrega == "completado":
+            continue
+        fecha_entrega = _as_date(pedido.fecha_entrega_prevista)
+        if not fecha_entrega:
+            pedido_sin_fecha = True
+        elif fecha_entrega < today:
+            pedido_vencido = True
+        if pedido.importe is None:
+            pedido_sin_importe = True
+
+    legacy_fecha_entrega = _as_date(obj.fecha_prevista_entrega or obj.plazo_proveedor)
+    if has_order and not pedidos and obj.estado != "Entregado / cerrado":
+        if not legacy_fecha_entrega:
+            pedido_sin_fecha = True
+        elif legacy_fecha_entrega < today:
+            pedido_vencido = True
+
+    if has_order and not obj.plazo_proveedor and obj.estado not in CLOSED_STATES:
+        _append_unique(motivos, "Plazo proveedor sin confirmar")
+        _append_unique(faltantes, "plazo proveedor")
+        set_action("confirmar_plazo", "Confirmar plazo", "pedidos")
+
+    if pedido_vencido:
+        _append_unique(motivos, "Pedido proveedor vencido")
+        set_action("confirmar_plazo" if not obj.plazo_proveedor else "actualizar_fecha", "Confirmar plazo" if not obj.plazo_proveedor else "Actualizar fecha", "pedidos")
+    if pedido_sin_fecha:
+        _append_unique(motivos, "Pedido sin fecha prevista")
+        _append_unique(faltantes, "pedido sin fecha")
+        set_action("actualizar_fecha", "Actualizar fecha", "pedidos")
+    if pedido_sin_importe:
+        _append_unique(faltantes, "pedido sin importe")
+
+    if deadline is None:
+        _append_unique(motivos, "Sin fecha de siguiente acción")
+        _append_unique(faltantes, "fecha límite siguiente acción")
+        if accion["tipo"] not in {"crear_pedido", "resolver_incidencia"}:
+            set_action("actualizar_fecha", "Actualizar fecha", "datos", force=True)
+    elif deadline < today:
+        _append_unique(motivos, "Fecha límite vencida")
+        set_action("actualizar_fecha", "Actualizar fecha", "datos")
+    elif deadline == today:
+        _append_unique(motivos, "Vence hoy")
+        set_action("abrir_detalle", "Abrir detalle", "datos")
+
+    if not (obj.siguiente_accion or "").strip():
+        _append_unique(motivos, "Sin siguiente acción")
+        _append_unique(faltantes, "siguiente acción")
+        if accion["tipo"] not in {"crear_pedido", "resolver_incidencia"}:
+            set_action("actualizar_fecha", "Actualizar fecha", "datos", force=True)
+
+    if obj.prioridad_calculada in {"Rojo", "Crítico"} or obj.incidencia or accepted_without_order or pedido_vencido:
+        prioridad_operativa = "urgente"
+    elif deadline == today or obj.prioridad_calculada == "Naranja":
+        prioridad_operativa = "hoy"
+    elif deadline and today < deadline <= today + timedelta(days=7):
+        prioridad_operativa = "semana"
+    elif deadline is None or faltantes:
+        prioridad_operativa = "sin_fecha"
+    else:
+        prioridad_operativa = "semana"
+
+    return {
+        "prioridad_operativa": prioridad_operativa,
+        "motivos": motivos or ["Seguimiento pendiente"],
+        "accion_recomendada": accion,
+        "faltantes": faltantes,
+    }
+
+
 @app.get("/mi-mesa")
 def mi_mesa(request: Request, db: Session = Depends(get_db), responsable: str | None = None):
     user = getattr(request.state, "user", None)
     keys = [k for k in [responsable, getattr(user, "nombre", None), getattr(user, "email", None)] if k]
-    q = base_query(db).filter(Presupuesto.estado.notin_(list(CLOSED_STATES)))
+    q = base_query(db).options(selectinload(Presupuesto.pedidos)).filter(Presupuesto.estado.notin_(list(CLOSED_STATES)))
     if keys:
         conds = []
         for key in keys:
@@ -1090,8 +1253,24 @@ def mi_mesa(request: Request, db: Session = Depends(get_db), responsable: str | 
             or r.incidencia
         ):
             out.append(r)
-    rank = {"Crítico": 5, "Rojo": 4, "Naranja": 3, "Amarillo": 2, "Verde": 1}
-    items = sorted([serialize(r) for r in out], key=lambda x: (rank.get(x["prioridad_calculada"], 0), x.get("dias_parado") or 0), reverse=True)
+    items = []
+    for r in out:
+        item = serialize(r)
+        item["pedidos"] = [_serialize_pedido_minimo(pedido) for pedido in getattr(r, "pedidos", []) or []]
+        item.update(_build_operational_context(r, pedido_counts.get(r.id, 0), today))
+        items.append(item)
+
+    risk_rank = {"Crítico": 5, "Rojo": 4, "Naranja": 3, "Amarillo": 2, "Verde": 1}
+    operational_rank = {"urgente": 4, "hoy": 3, "semana": 2, "sin_fecha": 1}
+    items = sorted(
+        items,
+        key=lambda x: (
+            operational_rank.get(x.get("prioridad_operativa"), 0),
+            risk_rank.get(x["prioridad_calculada"], 0),
+            x.get("dias_parado") or 0,
+        ),
+        reverse=True,
+    )
     return {
         "usuario": {"id": getattr(user, "id", None), "nombre": getattr(user, "nombre", None), "email": getattr(user, "email", None)},
         "items": items,
@@ -1101,6 +1280,10 @@ def mi_mesa(request: Request, db: Session = Depends(get_db), responsable: str | 
             "criticos": len([x for x in items if x.get("prioridad_calculada") == "Crítico"]),
             "incidencias": len([x for x in items if x.get("incidencia")]),
             "aceptados_sin_pedido": len([x for x in items if x.get("fecha_aceptacion") and not x.get("pedido_proveedor_realizado")]),
+            "urgentes": len([x for x in items if x.get("prioridad_operativa") == "urgente"]),
+            "hoy": len([x for x in items if x.get("prioridad_operativa") == "hoy"]),
+            "semana": len([x for x in items if x.get("prioridad_operativa") == "semana"]),
+            "sin_fecha": len([x for x in items if x.get("prioridad_operativa") == "sin_fecha"]),
         }
     }
 
@@ -1774,7 +1957,7 @@ def row_to_payload(row: pd.Series) -> dict[str, Any]:
     # Ensure required string fields are not None
     for k in ['cliente', 'obra_referencia', 'gestor', 'estado']:
         if not data.get(k):
-            data[k] = k.replace('_', ' ').title()
+            data[k] = 'Borrador' if k == 'estado' else k.replace('_', ' ').title()
     if data.get('importe') is None:
         data['importe'] = 0
     if data.get('fecha_presupuesto') is None:
