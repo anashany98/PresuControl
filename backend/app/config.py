@@ -97,6 +97,7 @@ def get_fastapi_docs_config() -> dict[str, str | None]:
 
 def get_public_paths() -> set[str]:
     paths = {
+        "/health", "/health/db",
         "/api/health", "/api/health/db",
         "/api/v1/health", "/api/v1/health/db",
         "/auth/register", "/auth/login",
