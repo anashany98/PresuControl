@@ -149,6 +149,7 @@ app = FastAPI(title="PresuControl API", version="1.3.1", lifespan=lifespan, **ge
 app.include_router(health_router, prefix="/api/v1")
 app.include_router(health_router, prefix="/api")
 app.include_router(auth_router, prefix="/api/v1")
+app.include_router(auth_router, prefix="/api")
 app.include_router(presupuestos_router, prefix="/api/v1")
 app.include_router(dashboard_router, prefix="/api/v1")
 
