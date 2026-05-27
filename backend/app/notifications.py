@@ -117,7 +117,7 @@ def send_alert_digest(db: Session, only_critical: bool = False, fingerprint_pref
         result = send_email(subject, recipients, text, html, db=db)
     except Exception as exc:
         result = {"sent": False, "reason": str(exc)}
-    # Send individual emails to gestores
+    gestores_emails = settings.get("gestores_emails", {})
     gestor_result = send_gestor_alerts(db, alerts, gestores_emails)
     result["gestor_emails"] = gestor_result
     _add_log(
