@@ -11,7 +11,13 @@ import { useMetadataOptions } from '../utils/useMetadataOptions'
 import { PedidoSummaryBadge } from '../components/PedidoSummary'
 
 const PRIORIDADES = ['Verde','Amarillo','Naranja','Rojo','Crítico']
-const defaultColumns = ['numero','cliente','obra','gestor','estado','importe','fechas','proveedor','np_cliente','codigo_cliente','nuevas_fechas','pedido','responsable','accion','dias','prioridad','incidencia','ultima']
+const defaultColumns = ['numero','cliente','gestor','estado','importe','pedido','accion','prioridad','ultima']
+const quickFilters = [
+  { key: 'mis_urgentes', label: 'Mis urgentes' },
+  { key: 'sin_pedido', label: 'Sin pedido' },
+  { key: 'pedidos_vencidos', label: 'Pedidos vencidos' },
+  { key: 'sin_proxima_accion', label: 'Sin próxima acción' },
+] as const
 
 export function Presupuestos() {
   const [params, setParams] = useSearchParams({ page: '1', page_size: '50', ocultar_cerrados: 'true' })
@@ -55,6 +61,32 @@ export function Presupuestos() {
     setParams(next)
   }
   const reset = () => setParams({ page: '1', page_size: '50', ocultar_cerrados: 'true' })
+  const applyQuickFilter = (key: typeof quickFilters[number]['key']) => {
+    const next = new URLSearchParams(params)
+    next.set('page', '1')
+    next.set('ocultar_cerrados', 'true')
+    next.delete('estado')
+    next.delete('prioridad')
+    next.delete('filtro_rapido')
+    if (key === 'mis_urgentes') {
+      next.set('prioridad', 'Crítico')
+      next.set('sort_by', 'prioridad')
+      next.set('sort_dir', 'desc')
+    } else if (key === 'sin_pedido') {
+      next.set('filtro_rapido', 'sin_pedido')
+      next.set('sort_by', 'ultima_actualizacion')
+      next.set('sort_dir', 'desc')
+    } else if (key === 'pedidos_vencidos') {
+      next.set('filtro_rapido', 'pedidos_vencidos')
+      next.set('sort_by', 'prioridad')
+      next.set('sort_dir', 'desc')
+    } else {
+      next.set('filtro_rapido', 'sin_proxima_accion')
+      next.set('sort_by', 'ultima_actualizacion')
+      next.set('sort_dir', 'desc')
+    }
+    setParams(next)
+  }
   const toggleColumn = (key: string) => setVisible(cols => cols.includes(key) ? cols.filter(c => c !== key) : [...cols, key])
   const rows = data?.items || []
   const has = (key: string) => visible.includes(key)
@@ -63,6 +95,22 @@ export function Presupuestos() {
     <>
       <PageHeader title="Presupuestos" subtitle="Tabla paginada con filtros, columnas configurables y exportación." actions={<Link className="btn" to="/nuevo"><Plus size={17}/>Nuevo</Link>} />
       <div className="card">
+        <div className="quick-filter-bar">
+          {quickFilters.map(filter => {
+            const active = filter.key === 'mis_urgentes'
+              ? params.get('prioridad') === 'Crítico'
+              : params.get('filtro_rapido') === filter.key
+            return (
+              <button
+                key={filter.key}
+                className={`quick-filter ${active ? 'active' : ''}`}
+                onClick={() => applyQuickFilter(filter.key)}
+              >
+                {filter.label}
+              </button>
+            )
+          })}
+        </div>
         <div className="toolbar">
           <input className="input" style={{ maxWidth: 310 }} value={params.get('search') || ''} onChange={e => set('search', e.target.value)} placeholder="Buscar por nº, cliente, obra, gestor..." />
           <select className="select" style={{ maxWidth: 260 }} value={params.get('estado') || ''} onChange={e => set('estado', e.target.value)}><option value="">Todos los estados</option>{ESTADOS.map(e => <option key={e}>{e}</option>)}</select>
@@ -179,21 +227,7 @@ export function PresupuestosTable({ rows, has, compact = false, sortBy, sortDir,
       {show('np_cliente') && <td><span className="font-mono text-xs">{p.numero_pedido_cliente || '—'}</span></td>}
       {show('codigo_cliente') && <td><span className="font-mono text-xs">{p.codigo_cliente_factusol || '—'}</span></td>}
       {show('nuevas_fechas') && <td><small>Med: {fmtDate(p.fecha_medicion)}<br/>Rec: {fmtDate(p.fecha_recepcion_mercancia)}<br/>Conf: {fmtDate(p.plazo_confeccion)}<br/>Ent: {fmtDate(p.fecha_entrega_cliente)}</small></td>}
-      {show('pedido') && <td>
-      {(p.pedidos?.length || 0) === 0 ? <span className="text-ink-muted text-xs">—</span> :
-        <div className="text-xs">
-          {p.pedidos!.slice(0, 3).map((ped, i) => (
-            <div key={i} className="flex items-center gap-1 mb-0.5">
-              <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: ped.estado_entrega === 'completado' ? '#22c55e' : ped.estado_entrega === 'parcial' ? '#3b82f6' : '#f59e0b' }} />
-              <span className="truncate">{ped.proveedor?.slice(0, 18)}{ped.proveedor && ped.proveedor.length > 18 ? '…' : ''}</span>
-              {ped.fecha_entrega_prevista && <span className="text-ink-muted">{new Date(ped.fecha_entrega_prevista).toLocaleDateString('es-ES', {day:'2-digit', month:'2-digit'})}</span>}
-              {!ped.fecha_entrega_prevista && ped.estado_entrega !== 'completado' && <span className="text-warning">sin fecha</span>}
-            </div>
-          ))}
-          {(p.pedidos?.length || 0) > 3 && <span className="text-ink-muted">+{p.pedidos!.length - 3} más</span>}
-        </div>
-      }
-    </td>}
+      {show('pedido') && <td><PedidoSummaryBadge presupuesto={p} variant="table" /></td>}
       {show('responsable') && <td>{p.gestor || '—'}</td>}
       {show('accion') && <td><strong>{p.siguiente_accion || '—'}</strong><br/><small>Vence: {fmtDate(p.fecha_limite_siguiente_accion)}</small></td>}
       {show('dias') && <td>{p.dias_parado}</td>}

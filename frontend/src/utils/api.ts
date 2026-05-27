@@ -35,6 +35,13 @@ export const ESTADOS = [
 ] as const
 
 export type Prioridad = 'Verde' | 'Amarillo' | 'Naranja' | 'Rojo' | 'Crítico'
+export type OperationalPriority = 'urgente' | 'hoy' | 'semana' | 'sin_fecha'
+export type RecommendedActionType = 'crear_pedido' | 'confirmar_plazo' | 'actualizar_fecha' | 'resolver_incidencia' | 'abrir_detalle'
+export type RecommendedAction = {
+  tipo: RecommendedActionType
+  label: string
+  target_tab?: 'datos' | 'pedidos' | 'historial' | 'proveedores'
+}
 
 export type Presupuesto = {
   id: number
@@ -79,6 +86,10 @@ export type Presupuesto = {
   version: number
   pedidos?: PedidoProveedor[]
   proveedores_asociados?: PresupuestoProveedor[]
+  prioridad_operativa?: OperationalPriority
+  motivos?: string[]
+  accion_recomendada?: RecommendedAction
+  faltantes?: string[]
 }
 
 

@@ -1,5 +1,11 @@
 import assert from 'node:assert/strict'
-import { getPedidoExceptionScore, getPedidoSummary } from '../src/utils/pedidoSummary.ts'
+import {
+  getPedidoExceptionScore,
+  getPedidoReadableChips,
+  getPedidoSummary,
+  getPedidoWarningLabels,
+} from '../src/utils/pedidoSummary.ts'
+import { getOperationalContext } from '../src/utils/workflow.ts'
 import type { Presupuesto } from '../src/utils/api'
 
 function presupuesto(overrides: Partial<Presupuesto>): Presupuesto {
@@ -72,6 +78,16 @@ assert.equal(summary.hayFechasPrevistasFaltantes, true)
 assert.equal(summary.hayPedidosVencidos, true)
 assert.equal(summary.tieneExcepciones, true)
 assert.ok(getPedidoExceptionScore(summary) > 0)
+assert.deepEqual(getPedidoReadableChips(summary), [
+  '3 pedidos',
+  '1 pendiente',
+  '1 parcial',
+  '1 completado',
+  '1 vencido',
+  '1 sin fecha',
+  '1 sin importe',
+])
+assert.deepEqual(getPedidoWarningLabels(summary), ['1 vencido', '1 sin fecha', '1 sin importe'])
 
 const legacy = getPedidoSummary(presupuesto({
   pedidos: [],
@@ -84,5 +100,27 @@ const legacy = getPedidoSummary(presupuesto({
 assert.equal(legacy.totalPedidos, 1)
 assert.equal(legacy.pedidos[0].proveedor, 'Legacy SL')
 assert.equal(legacy.pendientes, 1)
+
+const acceptedWithoutOrder = getOperationalContext(presupuesto({
+  estado: 'Aceptado - pendiente pedido proveedor',
+  fecha_aceptacion: '2026-05-10',
+  fecha_limite_siguiente_accion: '2026-05-18',
+  pedidos: [],
+}), new Date('2026-05-19T12:00:00Z'))
+
+assert.equal(acceptedWithoutOrder.prioridad_operativa, 'urgente')
+assert.ok(acceptedWithoutOrder.motivos.includes('Aceptado sin pedido proveedor'))
+assert.equal(acceptedWithoutOrder.accion_recomendada.tipo, 'crear_pedido')
+assert.ok(acceptedWithoutOrder.faltantes.includes('pedido proveedor'))
+
+const noDeadline = getOperationalContext(presupuesto({
+  fecha_limite_siguiente_accion: null,
+  siguiente_accion: '',
+  prioridad_calculada: 'Verde',
+  pedidos: [],
+}), new Date('2026-05-19T12:00:00Z'))
+
+assert.equal(noDeadline.prioridad_operativa, 'sin_fecha')
+assert.equal(noDeadline.accion_recomendada.tipo, 'actualizar_fecha')
 
 console.log('pedidoSummary tests passed')

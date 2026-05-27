@@ -1,28 +1,31 @@
-import { useState, useMemo } from 'react'
-import { AlertTriangle, ArrowRight, Calendar, CheckCircle2, ChevronRight, Clock3, RefreshCw } from 'lucide-react'
+import { useMemo } from 'react'
+import { AlertTriangle, ArrowRight, Calendar, CheckCircle2, Clock3, PackagePlus, RefreshCw } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/PageHeader'
 import { SkeletonTable } from '../components/Skeleton'
-import { api, euro, type Presupuesto } from '../utils/api'
+import { api, euro, type OperationalPriority, type Presupuesto, type RecommendedActionType } from '../utils/api'
 import { useData } from '../utils/useData'
-import { useToast } from '../utils/toast'
 import { PRIORITY_COLOR } from '../utils/tokens'
 import { PedidoSummaryBadge } from '../components/PedidoSummary'
+import { mergeOperationalContext, operationalPriorityLabel } from '../utils/workflow'
 
 type MiMesaResponse = {
   usuario: { id?: number; nombre?: string; email?: string }
   items: Presupuesto[]
-  resumen: { total: number; vencidos: number; criticos: number; incidencias: number; aceptados_sin_pedido: number }
+  resumen: {
+    total: number
+    vencidos: number
+    criticos: number
+    incidencias: number
+    aceptados_sin_pedido: number
+    urgentes?: number
+    hoy?: number
+    semana?: number
+    sin_fecha?: number
+  }
 }
 
-type TabKey = 'todas' | 'vencidas' | 'hoy' | 'semana' | 'sin_accion'
-
-interface Tab {
-  key: TabKey
-  label: string
-  count: number
-  icon: React.ComponentType<{ size?: number; className?: string }>
-}
+const sectionOrder: OperationalPriority[] = ['urgente', 'hoy', 'semana', 'sin_fecha']
 
 function getDaysDiff(fecha: string | null | undefined): number {
   if (!fecha) return NaN
@@ -32,50 +35,76 @@ function getDaysDiff(fecha: string | null | undefined): number {
   return Math.ceil((target.getTime() - today.getTime()) / 86400000)
 }
 
+function actionHref(item: Presupuesto) {
+  const action = mergeOperationalContext(item).accion_recomendada
+  const tab = action.target_tab || (action.tipo === 'crear_pedido' || action.tipo === 'confirmar_plazo' ? 'pedidos' : 'datos')
+  return `/presupuestos/${item.id}?tab=${tab}&action=${action.tipo}`
+}
+
+function actionIcon(action: RecommendedActionType) {
+  if (action === 'crear_pedido') return <PackagePlus size={14} />
+  if (action === 'confirmar_plazo' || action === 'actualizar_fecha') return <Calendar size={14} />
+  if (action === 'resolver_incidencia') return <AlertTriangle size={14} />
+  return <ArrowRight size={14} />
+}
+
 function WorkCard({ item, onGoKanban }: { item: Presupuesto; onGoKanban: (id: number) => void }) {
+  const operational = mergeOperationalContext(item)
   const daysDiff = getDaysDiff(item.fecha_limite_siguiente_accion)
   const isPast = daysDiff < 0 && !isNaN(daysDiff)
   const isToday = daysDiff === 0
   const barColor = PRIORITY_COLOR[item.prioridad_calculada] || '#d1d5db'
+  const action = operational.accion_recomendada
 
   return (
-    <div className="bg-white border border-border rounded-lg overflow-hidden hover:bg-surface-hover hover:shadow-soft transition-all duration-150">
+    <div className="work-card">
       <div className="flex">
-        <div className="w-1 flex-shrink-0 rounded-l-lg" style={{ backgroundColor: barColor }} />
-        <div className="flex-1 min-w-0 pl-2 pr-3 py-2">
-          <div className="flex items-start justify-between gap-2 mb-1">
+        <div className="work-card-priority" style={{ backgroundColor: barColor }} />
+        <div className="flex-1 min-w-0 px-3 py-3">
+          <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <Link to={`/presupuestos/${item.id}`} className="font-mono text-xs text-brand font-semibold hover:underline">
                 {item.numero_presupuesto}
               </Link>
-              <span className="font-semibold text-sm text-ink ml-2">{item.cliente}</span>
+              <div className="font-semibold text-sm text-ink leading-snug truncate">{item.cliente}</div>
             </div>
             <span className="font-semibold text-sm flex-shrink-0">{euro(item.importe)}</span>
           </div>
           {item.obra_referencia && (
-            <div className="text-xs text-ink-muted truncate mb-1">{item.obra_referencia}</div>
+            <div className="text-xs text-ink-muted truncate mt-1">{item.obra_referencia}</div>
           )}
-          <div className="flex items-center gap-3 text-xs">
+          <div className="work-card-meta">
+            <span className="work-status-chip">{item.estado}</span>
             {item.fecha_limite_siguiente_accion ? (
               <span className={`font-medium ${isPast ? 'text-danger' : isToday ? 'text-warning' : 'text-ink-muted'}`}>
-                {isPast ? `Vence ${daysDiff}d` : isToday ? 'HOY' : new Date(item.fecha_limite_siguiente_accion).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' })}
+                {isPast ? `Vencido hace ${Math.abs(daysDiff)}d` : isToday ? 'Vence hoy' : new Date(item.fecha_limite_siguiente_accion).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' })}
               </span>
             ) : (
               <span className="text-ink-muted">Sin fecha</span>
             )}
-            <span className="text-ink-muted truncate">{item.estado.split(' - ')[0]}</span>
-            <span className="text-ink-muted">{item.gestor?.split(' ')[0]}</span>
+            <span className="text-ink-muted truncate">{item.siguiente_accion || 'Sin siguiente acción'}</span>
+          </div>
+          <div className="work-chip-row">
+            {operational.motivos.slice(0, 3).map(motivo => (
+              <span key={motivo} className={`work-chip ${operational.prioridad_operativa === 'urgente' ? 'work-chip-danger' : ''}`}>{motivo}</span>
+            ))}
+            {operational.faltantes.slice(0, 3).map(faltante => (
+              <span key={faltante} className="work-chip work-chip-muted">Falta {faltante}</span>
+            ))}
+          </div>
+          <div className="work-pedido-row">
             <PedidoSummaryBadge presupuesto={item} variant="mini" />
           </div>
-          <div className="flex gap-2 mt-2 pt-2 border-t border-border">
-            <Link to={`/presupuestos/${item.id}`} className="text-xs text-gray-500 hover:text-gray-700 border border-gray-200 rounded px-2 py-1">
-              Detalle
+          <div className="work-card-actions">
+            <Link to={actionHref(item)} className="btn primary small">
+              {actionIcon(action.tipo)}
+              {action.label}
             </Link>
             <button
-              className="text-xs text-gray-500 hover:text-gray-700 border border-gray-200 rounded px-2 py-1"
+              className="btn secondary small"
               onClick={() => onGoKanban(item.id)}
             >
-              Kanban <ArrowRight size={10} className="inline" />
+              Kanban <ArrowRight size={13} />
             </button>
           </div>
         </div>
@@ -87,49 +116,17 @@ function WorkCard({ item, onGoKanban }: { item: Presupuesto; onGoKanban: (id: nu
 export function MiTrabajo() {
   const { data, loading, error, reload } = useData<MiMesaResponse>(() => api.get('/mi-mesa'), [])
   const navigate = useNavigate()
-  const toast = useToast()
-  const [activeTab, setActiveTab] = useState<TabKey>('todas')
 
   const goKanban = (id: number) => navigate(`/kanban?focus=${id}`)
 
-  const categorized = useMemo(() => {
-    if (!data?.items) return { vencidas: [] as Presupuesto[], hoy: [] as Presupuesto[], semana: [] as Presupuesto[], sin_accion: [] as Presupuesto[] }
-    const vencidas: Presupuesto[] = []
-    const hoy: Presupuesto[] = []
-    const semana: Presupuesto[] = []
-    const sin_accion: Presupuesto[] = []
-
-    for (const p of data.items) {
-      if (!p.fecha_limite_siguiente_accion) {
-        sin_accion.push(p)
-      } else {
-        const diff = getDaysDiff(p.fecha_limite_siguiente_accion)
-        if (diff < 0) vencidas.push(p)
-        else if (diff === 0) hoy.push(p)
-        else if (diff <= 7) semana.push(p)
-        else hoy.push(p) // future items with action go to "hoy" bucket
-      }
+  const grouped = useMemo(() => {
+    const empty: Record<OperationalPriority, Presupuesto[]> = { urgente: [], hoy: [], semana: [], sin_fecha: [] }
+    for (const item of data?.items || []) {
+      empty[mergeOperationalContext(item).prioridad_operativa].push(item)
     }
-    return { vencidas, hoy, semana, sin_accion }
+    return empty
   }, [data])
 
-  const tabs: Tab[] = [
-    { key: 'todas', label: 'Todas', count: data?.resumen?.total || 0, icon: Clock3 },
-    { key: 'vencidas', label: 'Vencidas', count: categorized.vencidas.length, icon: AlertTriangle },
-    { key: 'hoy', label: 'Hoy', count: categorized.hoy.length, icon: CheckCircle2 },
-    { key: 'semana', label: 'Semana', count: categorized.semana.length, icon: Calendar },
-    { key: 'sin_accion', label: 'Sin acción', count: categorized.sin_accion.length, icon: Clock3 },
-  ]
-
-  const tabItems: Record<TabKey, Presupuesto[]> = {
-    todas: data?.items || [],
-    vencidas: categorized.vencidas,
-    hoy: categorized.hoy,
-    semana: categorized.semana,
-    sin_accion: categorized.sin_accion,
-  }
-
-  const displayItems = tabItems[activeTab] || []
   const r = data?.resumen
 
   return <>
@@ -139,63 +136,55 @@ export function MiTrabajo() {
       actions={<button className="btn secondary" onClick={reload}><RefreshCw size={16} /> Actualizar</button>}
     />
 
-    {/* KPIs Row */}
     <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-4">
       <KpiBadge label="Total" value={r?.total || 0} tone="default" />
-      <KpiBadge label="Vencidas" value={r?.vencidos || 0} tone={r?.vencidos ? 'danger' : 'default'} />
-      <KpiBadge label="Críticas" value={r?.criticos || 0} tone={r?.criticos ? 'danger' : 'default'} />
+      <KpiBadge label="Urgentes" value={r?.urgentes ?? grouped.urgente.length} tone={(r?.urgentes ?? grouped.urgente.length) ? 'danger' : 'default'} />
+      <KpiBadge label="Hoy" value={r?.hoy ?? grouped.hoy.length} tone={(r?.hoy ?? grouped.hoy.length) ? 'warning' : 'default'} />
       <KpiBadge label="Sin pedido" value={r?.aceptados_sin_pedido || 0} tone={r?.aceptados_sin_pedido ? 'warning' : 'default'} />
-      <KpiBadge label="Incidencias" value={r?.incidencias || 0} tone={r?.incidencias ? 'danger' : 'default'} />
+      <KpiBadge label="Sin fecha" value={r?.sin_fecha ?? grouped.sin_fecha.length} tone={(r?.sin_fecha ?? grouped.sin_fecha.length) ? 'warning' : 'default'} />
     </div>
 
     {error && <div className="error">{error}</div>}
     {loading ? <SkeletonTable rows={6} /> : <>
-      {/* Tabs */}
-      <div className="border-b border-border overflow-x-auto mb-4">
-        <div className="flex min-w-max">
-          {tabs.map(tab => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`flex items-center gap-1.5 px-3 py-2 text-sm whitespace-nowrap border-b-2 transition-colors duration-150 ${
-                activeTab === tab.key
-                  ? 'border-brand text-ink font-semibold'
-                  : 'border-transparent text-ink-muted hover:text-ink'
-              }`}
-            >
-              <tab.icon size={14} />
-              <span>{tab.label}</span>
-              <span className="inline-flex items-center justify-center min-w-[20px] h-5 text-xs font-medium rounded-full px-1.5 bg-muted text-ink">
-                {tab.count}
-              </span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Items */}
-      {displayItems.length === 0 ? (
+      {(data?.items || []).length === 0 ? (
         <div className="text-center py-12 text-ink-muted">
           <CheckCircle2 size={32} className="mx-auto mb-2 text-success" />
-          {activeTab === 'todas' ? (
-            <>
-              <p className="font-medium text-ink">No tienes tareas asignadas</p>
-              <p className="text-xs mt-1">Como administrador, usa el Dashboard y Kanban para ver todos los presupuestos.</p>
-            </>
-          ) : activeTab === 'vencidas' ? 'No hay tareas vencidas. ¡Buen trabajo!' :
-           activeTab === 'hoy' ? 'Nada pendiente para hoy.' :
-           activeTab === 'semana' ? 'Nada esta semana.' :
-           'Todas las tareas tienen fecha.'}
+          <p className="font-medium text-ink">No tienes tareas asignadas</p>
+          <p className="text-xs mt-1">Como administrador, usa el Dashboard y Kanban para ver todos los presupuestos.</p>
         </div>
       ) : (
-        <div className="flex flex-col gap-1">
-          {displayItems.map(item => (
-            <WorkCard key={item.id} item={item} onGoKanban={goKanban} />
+        <div className="work-board">
+          {sectionOrder.map(priority => (
+            <section key={priority} className={`work-section work-section-${priority}`}>
+              <div className="work-section-header">
+                <div>
+                  <h2>{operationalPriorityLabel(priority)}</h2>
+                  <span>{sectionSubtitle(priority)}</span>
+                </div>
+                <strong>{grouped[priority].length}</strong>
+              </div>
+              {grouped[priority].length === 0 ? (
+                <div className="work-empty"><Clock3 size={16} /> Sin presupuestos en este bloque</div>
+              ) : (
+                <div className="work-section-list">
+                  {grouped[priority].map(item => (
+                    <WorkCard key={item.id} item={item} onGoKanban={goKanban} />
+                  ))}
+                </div>
+              )}
+            </section>
           ))}
         </div>
       )}
     </>}
   </>
+}
+
+function sectionSubtitle(priority: OperationalPriority) {
+  if (priority === 'urgente') return 'Riesgo real o bloqueo que puede olvidarse'
+  if (priority === 'hoy') return 'Acciones con vencimiento hoy'
+  if (priority === 'semana') return 'Seguimiento previsto a corto plazo'
+  return 'Falta una fecha o una acción clara'
 }
 
 function KpiBadge({ label, value, tone }: { label: string; value: number; tone: 'danger' | 'warning' | 'default' }) {
