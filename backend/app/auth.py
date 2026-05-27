@@ -76,3 +76,12 @@ def get_authenticated_user_from_request(request: Request, db: Session) -> Usuari
     if not user:
         raise HTTPException(status_code=401, detail="Usuario no encontrado, desactivado o pendiente de aceptación.")
     return user
+
+
+def get_current_user(request: Request) -> Usuario | None:
+    if not is_auth_enabled():
+        return getattr(request.state, "user", None)
+    user = getattr(request.state, "user", None)
+    if not user:
+        raise HTTPException(status_code=401, detail="No autenticado")
+    return user

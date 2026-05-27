@@ -35,6 +35,12 @@ class PresupuestoBase(BaseModel):
     estado: str | None = None
     proveedor: str | None = None
     pedido_proveedor_realizado: bool | None = None
+    numero_pedido_cliente: str | None = None
+    codigo_cliente_factusol: str | None = None
+    fecha_medicion: date | None = None
+    fecha_recepcion_mercancia: date | None = None
+    plazo_confeccion: date | None = None
+    fecha_entrega_cliente: date | None = None
     numero_pedido_proveedor: str | None = None
     fecha_pedido_proveedor: date | None = None
     plazo_proveedor: date | None = None
@@ -384,6 +390,8 @@ class UserOut(BaseModel):
     creado_en: datetime
     puede_gestionar_sistema: bool = False
     rol: Literal["admin_sistema", "gestion"] = "gestion"
+    ultimo_login: datetime | None = None
+    presupuestos_count: int = 0
 
 
 class TokenOut(BaseModel):
@@ -399,6 +407,7 @@ class QuickAction(BaseModel):
     fecha_envio_cliente: date | None = None
     fecha_aceptacion: date | None = None
     proveedor: str | None = None
+    numero_pedido_cliente: str | None = None
     numero_pedido_proveedor: str | None = None
     fecha_pedido_proveedor: date | None = None
     plazo_proveedor: date | None = None
