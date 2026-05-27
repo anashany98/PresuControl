@@ -33,8 +33,8 @@ export function Sidebar({ sections, counters, collapsed, onToggleCollapse, onLin
         ◀
       </button>
 
-      <div className="sidebar-brand">
-        <span>📊</span>
+      <div className="sidebar-brand" aria-label="PresuControl">
+        <span aria-hidden="true">📊</span>
         {!collapsed && <span>PresuControl</span>}
       </div>
 

@@ -126,6 +126,7 @@ export function Layout() {
 
   return (
     <div className="app-layout" style={{ flexDirection: 'column' }}>
+      <a href="#main-content" className="skip-link">Saltar al contenido principal</a>
       <Topbar
         sections={visibleSections}
         counters={(counters.data as SidebarCounters) || {}}
@@ -136,7 +137,7 @@ export function Layout() {
       />
 
       {/* ── Page Content ── */}
-      <main className="main-content" style={{ padding: '20px 24px 80px', flex: 1, width: '100%' }}>
+      <main id="main-content" className="main-content" style={{ padding: '20px 24px 80px', flex: 1, width: '100%' }}>
         <Outlet />
       </main>
 
