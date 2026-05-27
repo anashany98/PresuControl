@@ -12,9 +12,27 @@ from .notifications_inapp import contar_sin_leer
 from .rules import CLOSED_STATES, calculate_risk, get_pedido_counts
 from .schemas import ESTADOS
 from .settings import get_settings
-
-
 from .serializers import SERIALIZE_FIELDS, serialize
+
+
+def dashboard_aggregate_metrics(db: Session) -> dict[str, Any]:
+    base = base_budget_query(db)
+    total = base.count()
+    accepted_no_order_q = base.filter(
+        Presupuesto.fecha_aceptacion.isnot(None),
+        Presupuesto.pedido_proveedor_realizado == False,  # noqa: E712
+    )
+    accepted_no_order = accepted_no_order_q.count()
+    incidencias = base.filter(Presupuesto.incidencia == True).count()  # noqa: E712
+    importe_total = db.query(func.coalesce(func.sum(Presupuesto.importe), 0)).filter(
+        Presupuesto.archivado == False  # noqa: E712
+    ).scalar()
+    return {
+        "total_activos": total,
+        "aceptados_sin_pedido": accepted_no_order,
+        "incidencias": incidencias,
+        "importe_total_riesgo": float(importe_total or 0),
+    }
 
 
 def base_budget_query(db: Session, include_archivados: bool = False):

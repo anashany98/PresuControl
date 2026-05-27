@@ -1,36 +1,47 @@
 from __future__ import annotations
 
+from datetime import date
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 
 from ..database import get_db
 from ..models import Presupuesto
 from ..auth import get_current_user
-from ..access_control import require_gestion_or_admin, ADMIN_ROLE, user_role
-from ..analytics import build_dashboard_payload, build_sidebar_counters
+from ..access_control import ADMIN_ROLE, user_role
+from ..analytics import build_dashboard_payload, build_sidebar_counters, enrich_risk
 from ..rules import CLOSED_STATES
+from ..cache import cache
+from ..services.dashboard_service import DashboardService
 
 router = APIRouter(tags=["dashboard"])
 
 
 @router.get("/dashboard")
 def dashboard(request: Request, db: Session = Depends(get_db)):
+    cached = cache.get("dashboard", ttl=60)
+    if cached is not None:
+        return cached
     user = getattr(request.state, "user", None)
     gestor = None
     if user and user_role(user) != ADMIN_ROLE:
         gestor = user.nombre
-    return build_dashboard_payload(db, gestor=gestor)
+    service = DashboardService(db)
+    result = service.get_dashboard(gestor=gestor)
+    cache.set("dashboard", result, ttl=60)
+    return result
 
 
 @router.get("/sidebar-counters")
 def sidebar_counters(request: Request, db: Session = Depends(get_db)):
+    cached = cache.get("sidebar", ttl=60)
+    if cached is not None:
+        return cached
     user = getattr(request.state, "user", None)
     user_id = user.id if user else None
-    counters = build_sidebar_counters(db, user_id)
+    service = DashboardService(db)
+    counters = service.get_sidebar_counters(user_id)
     if user:
-        from sqlalchemy import or_
-        from datetime import date
-        from ..analytics import enrich_risk
         keys = [k for k in [getattr(user, "nombre", None), getattr(user, "email", None)] if k]
         if keys:
             conds = []
@@ -48,4 +59,5 @@ def sidebar_counters(request: Request, db: Session = Depends(get_db)):
                 (r.fecha_limite_siguiente_accion and r.fecha_limite_siguiente_accion <= today) or
                 r.prioridad_calculada in {"Rojo", "Crítico"} or
                 (r.fecha_aceptacion and not pedido_counts.get(r.id, 0)) or r.incidencia))
+    cache.set("sidebar", counters, ttl=60)
     return counters

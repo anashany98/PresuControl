@@ -150,7 +150,31 @@ def me(request: Request, db: Session = Depends(get_db)):
 @router.get("/usuarios", response_model=list[UserOut])
 def list_usuarios(request: Request, db: Session = Depends(get_db)):
     require_system_manager(request)
-    return db.query(Usuario).order_by(desc(Usuario.creado_en)).all()
+    from sqlalchemy import func
+    from ..models import Presupuesto
+
+    usuarios = db.query(Usuario).order_by(desc(Usuario.creado_en)).all()
+    result = []
+    for user in usuarios:
+        count = db.query(func.count(Presupuesto.id)).filter(
+            (Presupuesto.gestor == user.nombre) | (Presupuesto.responsable_actual == user.nombre)
+        ).scalar() or 0
+        user_dict = {
+            "id": user.id,
+            "nombre": user.nombre,
+            "email": user.email,
+            "activo": user.activo,
+            "aprobado": user.aprobado,
+            "aprobado_en": user.aprobado_en,
+            "aprobado_por": user.aprobado_por,
+            "creado_en": user.creado_en,
+            "puede_gestionar_sistema": user.puede_gestionar_sistema,
+            "rol": user.rol,
+            "ultimo_login": user.ultimo_login,
+            "presupuestos_count": count,
+        }
+        result.append(UserOut(**user_dict))
+    return result
 
 
 @router.post("/usuarios", response_model=UserOut)
