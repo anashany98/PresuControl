@@ -73,6 +73,8 @@ from .notifications import build_alerts, money_at_risk, run_automatic_alert_chec
 from .notifications_inapp import limpiar_notificaciones_antiguas, obtener_notificaciones, contar_sin_leer, marcar_leida, marcar_todas_leidas
 from .routers.health import router as health_router
 from .routers.auth import router as auth_router
+from .routers.presupuestos import router as presupuestos_router
+from .routers.dashboard import router as dashboard_router
 from .logging_middleware import StructuredLoggingMiddleware
 from .services.metadata_service import build_metadata_options, distinct_column_values, normalize_option_list, provider_catalog_values
 
@@ -146,6 +148,8 @@ validate_runtime_config()
 app = FastAPI(title="PresuControl API", version="1.3.1", lifespan=lifespan, **get_fastapi_docs_config())
 app.include_router(health_router)
 app.include_router(auth_router)
+app.include_router(presupuestos_router)
+app.include_router(dashboard_router)
 
 origins = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost:3000").split(",")
 origins_stripped = [o.strip() for o in origins if o.strip()]
@@ -1665,6 +1669,8 @@ def export_presupuestos(
     )
 
 MAX_IMPORT_FILE_SIZE = 10 * 1024 * 1024
+MAX_ROWS = 50000
+CHUNK_SIZE = 500
 ALLOWED_IMPORT_EXTENSIONS = {".csv", ".xlsx", ".xls"}
 ALLOWED_IMPORT_MIME_TYPES = {
     "text/csv",
