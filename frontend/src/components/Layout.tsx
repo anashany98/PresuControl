@@ -2,7 +2,7 @@ import { Outlet, useNavigate } from 'react-router-dom'
 import { useEffect, useState, useRef } from 'react'
 import {
   BarChart3, Bell, CalendarDays, CheckSquare,
-  ClipboardClock, ClipboardList, Euro, FilePlus2,
+  ClipboardList, Euro, FilePlus2,
   LayoutDashboard, Settings, ShieldAlert,
   Table2, UploadCloud, UserCheck,
 } from 'lucide-react'
@@ -122,13 +122,14 @@ export function Layout() {
   const bottomTabs = BOTTOM_TABS.map(to => {
     const link = visibleSections.flatMap(s => s.links).find(l => l.to === to)
     return link ? { to, icon: link.icon, label: link.label, counter: link.counter } : null
-  }).filter(Boolean) as { to: string; icon: any; label: string; counter?: string }[]
+  }).filter(Boolean) as { to: string; icon: import('lucide-react').LucideIcon; label: string; counter?: string }[]
 
   return (
     <div className="app-layout" style={{ flexDirection: 'column' }}>
+      <a href="#main-content" className="skip-link">Saltar al contenido principal</a>
       <Topbar
         sections={visibleSections}
-        counters={(counters.data as any) || {}}
+        counters={(counters.data as SidebarCounters) || {}}
         onMenuClick={() => setSidebarOpen(true)}
         onNotifClick={() => setNotifPanel(!notifPanel)}
         isAdmin={isAdmin}
@@ -136,21 +137,21 @@ export function Layout() {
       />
 
       {/* ── Page Content ── */}
-      <main className="main-content" style={{ padding: '20px 24px 80px', flex: 1, width: '100%' }}>
+      <main id="main-content" className="main-content" style={{ padding: '20px 24px 80px', flex: 1, width: '100%' }}>
         <Outlet />
       </main>
 
       {/* ── Mobile Bottom Tabs ── */}
       <BottomTabs
         bottomTabs={bottomTabs}
-        counters={(counters.data as any) || {}}
+        counters={counters.data as SidebarCounters || {}}
       />
 
       {/* ── Mobile Drawer ── */}
       <MobileDrawer
         open={sidebarOpen}
         sections={visibleSections}
-        counters={(counters.data as any) || {}}
+        counters={counters.data as SidebarCounters || {}}
         onClose={() => setSidebarOpen(false)}
       />
 

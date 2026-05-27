@@ -1,4 +1,4 @@
-"""Tests for authentication flows: register, login, password reset, rate limits."""
+"""Tests for authentication flows: register, login, me, and rate limits."""
 import pytest
 from datetime import datetime, timezone, timedelta
 from unittest.mock import patch

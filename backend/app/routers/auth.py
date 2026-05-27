@@ -18,12 +18,14 @@ from ..auth import (
     normalize_email,
     verify_password,
 )
+from ..auth_rate_limit import clear_failed_logins, enforce_login_rate_limit, register_failed_login
 from ..database import get_db
 
-from ..models import LoginAttempt, Usuario
-from ..notifications_inapp import contar_sin_leer, marcar_leida, marcar_todas_leidas, obtener_notificaciones
+from ..models import Usuario
 from ..schemas import (
+    PasswordAdminReset,
     TokenOut,
+    UserAdminCreate,
     UserApprovalPayload,
     UserLogin,
     UserOut,
@@ -53,45 +55,25 @@ def _enforce_registration_rate_limit(request: Request, db: Session) -> None:
         if stored > window and attempt.attempts >= 5:
             raise HTTPException(status_code=429, detail="Demasiados registros. Intenta en 10 minutos.")
         attempt.attempts += 1
-    elif attempt:
-        attempt.attempts = 1
-        attempt.window_start = now
     else:
         db.add(RegistrationAttempt(ip=ip, attempts=1, window_start=now))
     db.commit()
 
 
-def _clear_failed_logins(email: str, request: Request, db: Session) -> None:
-    ip = request.client.host if request.client else "unknown"
-    db.query(LoginAttempt).filter(LoginAttempt.ip == ip, LoginAttempt.email == email).delete()
-    db.commit()
+def _actor_label(request: Request) -> str | None:
+    user = getattr(request.state, "user", None)
+    return getattr(user, "nombre", None) or getattr(user, "email", None)
 
 
-def _enforce_login_rate_limit(email: str, request: Request, db: Session) -> None:
-    ip = request.client.host if request.client else "unknown"
-    now = datetime.now(timezone.utc)
-    window = now - timedelta(minutes=int(os.getenv("LOGIN_RATE_LIMIT_WINDOW_MINUTES", "10")))
-    max_attempts = int(os.getenv("LOGIN_RATE_LIMIT_ATTEMPTS", "5"))
-    attempt = db.query(LoginAttempt).filter(LoginAttempt.ip == ip, LoginAttempt.email == email).first()
-    if not attempt:
-        return
-    stored = attempt.window_start
-    if stored.tzinfo is None:
-        stored = stored.replace(tzinfo=timezone.utc)
-    if stored > window and attempt.attempts >= max_attempts:
-        raise HTTPException(status_code=429, detail="Demasiados intentos. Intenta en unos minutos.")
-
-
-def _register_failed_login(email: str, request: Request, db: Session) -> None:
-    ip = request.client.host if request.client else "unknown"
-    now = datetime.now(timezone.utc)
-    attempt = db.query(LoginAttempt).filter(LoginAttempt.ip == ip, LoginAttempt.email == email).first()
-    if attempt:
-        attempt.attempts += 1
-        attempt.window_start = now
-    else:
-        db.add(LoginAttempt(ip=ip, email=email, attempts=1, window_start=now))
-    db.commit()
+def _current_db_user(request: Request, db: Session) -> Usuario:
+    state_user = getattr(request.state, "user", None)
+    user_id = getattr(state_user, "id", None)
+    user = db.get(Usuario, user_id) if user_id is not None else None
+    if not user and getattr(state_user, "email", None):
+        user = db.query(Usuario).filter(Usuario.email == state_user.email).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="No autenticado.")
+    return user
 
 
 # ---------------------------------------------------------------------------
@@ -133,14 +115,14 @@ def register(payload: UserRegister, request: Request, db: Session = Depends(get_
 @router.post("/auth/login", response_model=TokenOut)
 def login(payload: UserLogin, request: Request, db: Session = Depends(get_db)):
     email = normalize_email(payload.email)
-    _enforce_login_rate_limit(email, request, db)
+    enforce_login_rate_limit(email, request, db)
     user = db.query(Usuario).filter(Usuario.email == email).first()
     if not user or not verify_password(payload.password, user.hashed_password):
-        _register_failed_login(email, request, db)
+        register_failed_login(email, request, db)
         raise HTTPException(status_code=401, detail="Email o contrasena incorrectos.")
     if not user.activo or not user.aprobado:
         raise HTTPException(status_code=403, detail="Cuenta pendiente de aceptacion o desactivada.")
-    _clear_failed_logins(email, request, db)
+    clear_failed_logins(email, request, db)
     user.ultimo_login = datetime.now(timezone.utc)
     db.commit()
     db.refresh(user)
@@ -168,7 +150,55 @@ def me(request: Request, db: Session = Depends(get_db)):
 @router.get("/usuarios", response_model=list[UserOut])
 def list_usuarios(request: Request, db: Session = Depends(get_db)):
     require_system_manager(request)
-    return db.query(Usuario).order_by(desc(Usuario.creado_en)).all()
+    from sqlalchemy import func
+    from ..models import Presupuesto
+
+    usuarios = db.query(Usuario).order_by(desc(Usuario.creado_en)).all()
+    result = []
+    for user in usuarios:
+        count = db.query(func.count(Presupuesto.id)).filter(
+            (Presupuesto.gestor == user.nombre) | (Presupuesto.responsable_actual == user.nombre)
+        ).scalar() or 0
+        user_dict = {
+            "id": user.id,
+            "nombre": user.nombre,
+            "email": user.email,
+            "activo": user.activo,
+            "aprobado": user.aprobado,
+            "aprobado_en": user.aprobado_en,
+            "aprobado_por": user.aprobado_por,
+            "creado_en": user.creado_en,
+            "puede_gestionar_sistema": user.puede_gestionar_sistema,
+            "rol": user.rol,
+            "ultimo_login": user.ultimo_login,
+            "presupuestos_count": count,
+        }
+        result.append(UserOut(**user_dict))
+    return result
+
+
+@router.post("/usuarios", response_model=UserOut)
+def create_usuario(payload: UserAdminCreate, request: Request, db: Session = Depends(get_db)):
+    require_system_manager(request)
+    email = normalize_email(payload.email)
+    existing = db.query(Usuario).filter(Usuario.email == email).first()
+    if existing:
+        raise HTTPException(status_code=422, detail="Ya existe un usuario con ese email.")
+    user = Usuario(
+        nombre=payload.nombre.strip(),
+        email=email,
+        hashed_password=hash_password(payload.password),
+        activo=True,
+        aprobado=True,
+        aprobado_en=datetime.now(timezone.utc),
+        aprobado_por=_actor_label(request),
+        puede_gestionar_sistema=payload.rol == ADMIN_ROLE,
+        rol=payload.rol,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
 
 
 @router.get("/usuarios/pendientes", response_model=list[UserOut])
@@ -186,7 +216,10 @@ def aceptar_usuario(usuario_id: int, request: Request, db: Session = Depends(get
     user.aprobado = True
     user.activo = True
     user.aprobado_en = datetime.now(timezone.utc)
-    user.aprobado_por = getattr(getattr(request.state, "user", None), "email", None)
+    user.aprobado_por = _actor_label(request)
+    if user_role(user) is None:
+        user.rol = GESTION_ROLE
+    sync_legacy_system_flag(user)
     db.commit()
     db.refresh(user)
     return user
@@ -210,20 +243,21 @@ def desactivar_usuario(usuario_id: int, request: Request, db: Session = Depends(
 @router.post("/usuarios/{usuario_id}/toggle-gestion", response_model=UserOut)
 def toggle_gestion_usuario(usuario_id: int, payload: UserApprovalPayload, request: Request, db: Session = Depends(get_db)):
     require_system_manager(request)
-    if payload.puede_gestionar_sistema is None:
-        raise HTTPException(status_code=422, detail="puede_gestionar_sistema es obligatorio.")
     user = db.get(Usuario, usuario_id)
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado.")
-    user.puede_gestionar_sistema = payload.puede_gestionar_sistema
-    user.rol = ADMIN_ROLE if payload.puede_gestionar_sistema else GESTION_ROLE
+    if payload.rol is not None:
+        target_role = payload.rol
+    elif payload.puede_gestionar_sistema is not None:
+        target_role = ADMIN_ROLE if payload.puede_gestionar_sistema else GESTION_ROLE
+    else:
+        raise HTTPException(status_code=422, detail="Falta rol o puede_gestionar_sistema.")
+    user.rol = target_role
+    user.puede_gestionar_sistema = target_role == ADMIN_ROLE
     db.commit()
     db.refresh(user)
-    sync_legacy_system_flag(user)
     return user
 
-
-from ..schemas import PasswordAdminReset
 
 @router.post("/usuarios/{usuario_id}/reset-password", response_model=UserOut)
 def admin_reset_password(usuario_id: int, payload: PasswordAdminReset, request: Request, db: Session = Depends(get_db)):
@@ -235,3 +269,20 @@ def admin_reset_password(usuario_id: int, payload: PasswordAdminReset, request: 
     db.commit()
     db.refresh(user)
     return user
+
+
+@router.get("/usuarios/me/preferencias")
+def get_my_preferencias(request: Request, db: Session = Depends(get_db)):
+    user = _current_db_user(request, db)
+    return user.preferencias or {}
+
+
+@router.patch("/usuarios/me/preferencias")
+def update_my_preferencias(payload: dict, request: Request, db: Session = Depends(get_db)):
+    user = _current_db_user(request, db)
+    current = dict(user.preferencias or {})
+    current.update(payload)
+    user.preferencias = current
+    db.commit()
+    db.refresh(user)
+    return user.preferencias or {}

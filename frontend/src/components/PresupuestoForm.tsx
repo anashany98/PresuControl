@@ -8,14 +8,16 @@ import { OptionInput } from './OptionInput'
 type FormValue = Partial<Presupuesto> & { modificado_por?: string }
 
 const RULES = [
-  { field: 'numero_presupuesto', validate: (v: any) => !v?.trim() ? 'El nº presupuesto es obligatorio' : null },
-  { field: 'cliente', validate: (v: any) => !v?.trim() ? 'El cliente es obligatorio' : null },
-  { field: 'obra_referencia', validate: (v: any) => !v?.trim() ? 'La obra/referencia es obligatoria' : null },
-  { field: 'gestor', validate: (v: any) => !v?.trim() ? 'El gestor es obligatorio' : null },
-  { field: 'importe', validate: (v: any) => (!v && v !== 0) ? 'El importe es obligatorio' : Number(v) <= 0 ? 'El importe debe ser mayor que 0' : null },
-  { field: 'fecha_presupuesto', validate: (v: any) => !v ? 'La fecha presupuesto es obligatoria' : null },
-  { field: 'estado', validate: (v: any) => !v ? 'El estado es obligatorio' : null },
+  { field: 'numero_presupuesto', validate: (v: string) => !v?.trim() ? 'El nº presupuesto es obligatorio' : null },
+  { field: 'cliente', validate: (v: string) => !v?.trim() ? 'El cliente es obligatorio' : null },
+  { field: 'obra_referencia', validate: (v: string) => !v?.trim() ? 'La obra/referencia es obligatoria' : null },
+  { field: 'gestor', validate: (v: string) => !v?.trim() ? 'El gestor es obligatorio' : null },
+  { field: 'importe', validate: (v: number) => (!v && v !== 0) ? 'El importe es obligatorio' : Number(v) <= 0 ? 'El importe debe ser mayor que 0' : null },
+  { field: 'fecha_presupuesto', validate: (v: string) => !v ? 'La fecha presupuesto es obligatoria' : null },
+  { field: 'estado', validate: (v: string) => !v ? 'El estado es obligatorio' : null },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   { field: 'fecha_aceptacion', validate: (v: any, all: any) => all?.estado === 'Aceptado - pendiente pedido proveedor' && !v ? 'La fecha de aceptación es obligatoria para estado aceptado' : null },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   { field: 'proveedor', validate: (v: any, all: any) => (all?.pedido_proveedor_realizado || all?.estado === 'Pedido proveedor realizado') && !v ? 'El proveedor es obligatorio cuando hay pedido' : null },
 ]
 
@@ -71,8 +73,13 @@ export function PresupuestoForm({ value, onChange, onSubmit, submitLabel = 'Guar
         <h3>B) Seguimiento cliente</h3>
         <div className="form-grid">
           <Field label="Estado *" required error={errors.estado}><select className="select" value={value.estado || ''} onChange={e => set('estado', e.target.value)} onBlur={e => validateField('estado', e.target.value)}><option value="">Seleccionar</option>{ESTADOS.map(s => <option key={s}>{s}</option>)}</select></Field>
+          <Field label="Código cliente FactuSOL"><input className="input" value={value.codigo_cliente_factusol || ''} onChange={e => set('codigo_cliente_factusol', e.target.value)} placeholder="ID FactuSOL del cliente" /></Field>
           <Field label="Fecha envío cliente"><input className="input" type="date" value={isoDate(value.fecha_envio_cliente)} onChange={e => set('fecha_envio_cliente', e.target.value || null)} /></Field>
           <Field label="Fecha aceptación" error={errors.fecha_aceptacion}><input className="input" type="date" value={isoDate(value.fecha_aceptacion)} onChange={e => set('fecha_aceptacion', e.target.value || null)} onBlur={e => validateField('fecha_aceptacion', e.target.value)} /></Field>
+          <Field label="Fecha medición"><input className="input" type="date" value={isoDate(value.fecha_medicion)} onChange={e => set('fecha_medicion', e.target.value || null)} /></Field>
+          <Field label="Fecha recepción mercancía"><input className="input" type="date" value={isoDate(value.fecha_recepcion_mercancia)} onChange={e => set('fecha_recepcion_mercancia', e.target.value || null)} /></Field>
+          <Field label="Plazo confección"><input className="input" type="date" value={isoDate(value.plazo_confeccion)} onChange={e => set('plazo_confeccion', e.target.value || null)} /></Field>
+          <Field label="Fecha entrega cliente"><input className="input" type="date" value={isoDate(value.fecha_entrega_cliente)} onChange={e => set('fecha_entrega_cliente', e.target.value || null)} /></Field>
           <Field label="Fecha cancelación / rechazo"><input className="input" type="date" value={isoDate(value.fecha_cancelacion_rechazo)} onChange={e => set('fecha_cancelacion_rechazo', e.target.value || null)} /></Field>
         </div>
         <div className="form-grid two mt-4">
@@ -83,6 +90,7 @@ export function PresupuestoForm({ value, onChange, onSubmit, submitLabel = 'Guar
       <section className="card">
         <h3>C) Pedido proveedor</h3>
         <div className="form-grid">
+          <Field label="Nº pedido cliente"><input className="input" value={value.numero_pedido_cliente || ''} onChange={e => set('numero_pedido_cliente', e.target.value)} placeholder="Referencia interna del cliente" /></Field>
           <Field label="Proveedor" error={errors.proveedor}><OptionInput className="input" options={metadataOptions.proveedores} value={value.proveedor || ''} onChange={e => set('proveedor', e.target.value)} onBlur={e => validateField('proveedor', e.target.value)} /></Field>
           <Field label="Pedido proveedor realizado"><select className="select" value={value.pedido_proveedor_realizado ? 'true' : 'false'} onChange={e => set('pedido_proveedor_realizado', e.target.value === 'true')}><option value="false">No</option><option value="true">Sí</option></select></Field>
           <Field label="Nº pedido proveedor"><input className="input" value={value.numero_pedido_proveedor || ''} onChange={e => set('numero_pedido_proveedor', e.target.value)} /></Field>

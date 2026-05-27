@@ -4,7 +4,7 @@ from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from app.database import Base
-from app.main import enforce_login_rate_limit, register_failed_login, clear_failed_logins
+from app.auth_rate_limit import enforce_login_rate_limit, register_failed_login, clear_failed_logins
 
 
 def fake_request(ip="127.0.0.1"):

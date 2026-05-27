@@ -1024,3 +1024,28 @@ tr:hover td { background: #fbfdff; }
 .dark hr { border-color: var(--border); }
 .dark .shadow-soft { box-shadow: var(--shadow-soft); }
 .dark .shadow-card { box-shadow: var(--shadow-card); }
+
+/* ── Skip Navigation Link ── */
+.skip-link {
+  position: absolute;
+  top: -100px;
+  left: 0;
+  z-index: 9999;
+  padding: 8px 16px;
+  background: var(--primary);
+  color: white;
+}
+.skip-link:focus {
+  top: 0;
+}
+
+/* ── Reduced Motion ── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

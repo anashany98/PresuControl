@@ -177,7 +177,7 @@ for p in random.sample(presupuestos_data, min(12, len(presupuestos_data))):
             usuario_email=random.choice(["maria@empresa.com", "carlos@empresa.com"]),
             creado_en=(date.today() - timedelta(days=random.randint(0, 20))).isoformat(),
         )
-        db.add(c)
+        db.add(h)
 
 db.commit()
 

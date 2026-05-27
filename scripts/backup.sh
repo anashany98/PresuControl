@@ -23,6 +23,13 @@ fi
 pg_dump -d "$DB_NAME" --no-owner --no-acl | gzip > "$BACKUP_FILE"
 echo "[$(date -Iseconds)] Backup completed: $(du -h "$BACKUP_FILE" | cut -f1)"
 
+TABLE_COUNT=$(gunzip -c "$BACKUP_FILE" | grep -c "CREATE TABLE")
+if [ "$TABLE_COUNT" -lt 5 ]; then
+    echo "ERROR: Backup parece incompleto (solo $TABLE_COUNT tablas)" >&2
+    exit 1
+fi
+echo "Backup verificado: $TABLE_COUNT tablas"
+
 if $ENCRYPT; then
     [[ -z "${BACKUP_ENCRYPTION_PASSWORD:-}" ]] && echo "ERROR: BACKUP_ENCRYPTION_PASSWORD not set." && exit 1
     ENCRYPTED_FILE="${BACKUP_FILE}.enc"

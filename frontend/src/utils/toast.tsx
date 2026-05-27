@@ -28,7 +28,6 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     setToasts(t => [...t, { id, message, type, timeoutId, action }])
   }, [remove])
 
-  // Cleanup timeouts on unmount
   useEffect(() => {
     return () => {
       toasts.forEach(t => clearTimeout(t.timeoutId))
@@ -38,9 +37,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={{ show, success: (m, a) => show(m, 'success', a), error: (m) => show(m, 'error') }}>
       {children}
-      <div className="toast-container">
+      <div className="toast-container" aria-live="polite" aria-atomic="true">
         {toasts.map(t => (
-          <div key={t.id} className={`toast toast-${t.type}`}>
+          <div key={t.id} className={`toast toast-${t.type}`} role="alert">
             {t.type === 'success' && <CheckCircle2 size={16}/>}
             {t.type === 'error' && <AlertCircle size={16}/>}
             {t.type === 'info' && <AlertCircle size={16}/>}

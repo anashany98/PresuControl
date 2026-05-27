@@ -68,7 +68,7 @@ export function NuevoPresupuesto() {
   const [expanded, setExpanded] = useState<Record<SectionKey, boolean>>({ seguimiento: false, pedidos: false, control: false })
   const [saving, setSaving] = useState(false)
 
-  const set = (key: keyof typeof form, value: any) => {
+  const set = (key: keyof typeof form, value: unknown) => {
     setForm(f => ({ ...f, [key]: value }))
     setFieldErrors(prev => ({ ...prev, [key]: '' }))
   }
@@ -92,7 +92,7 @@ export function NuevoPresupuesto() {
     if (!validate()) return
     setSaving(true)
     try {
-      const dateFields = ['fecha_envio_cliente', 'fecha_aceptacion', 'fecha_pedido_proveedor', 'plazo_proveedor', 'fecha_prevista_entrega', 'fecha_limite_siguiente_accion', 'fecha_cancelacion_rechazo']
+      const dateFields = ['fecha_envio_cliente', 'fecha_aceptacion', 'fecha_pedido_proveedor', 'plazo_proveedor', 'fecha_prevista_entrega', 'fecha_limite_siguiente_accion', 'fecha_cancelacion_rechazo', 'fecha_medicion', 'fecha_recepcion_mercancia', 'plazo_confeccion', 'fecha_entrega_cliente']
       const cleaned = { ...form }
       for (const f of dateFields) { if ((cleaned as any)[f] === '') (cleaned as any)[f] = null }
       const created = await api.post<Presupuesto>('/presupuestos', cleaned)
@@ -157,8 +157,14 @@ export function NuevoPresupuesto() {
     {/* ── Opcional: Seguimiento ── */}
     <CollapsibleSection title="Seguimiento cliente" expanded={expanded.seguimiento} onToggle={() => toggle('seguimiento')}>
       <div className="form-grid">
+        <div className="field"><label>Código cliente FactuSOL</label><input className="input" value={form.codigo_cliente_factusol || ''} onChange={e => set('codigo_cliente_factusol', e.target.value)} placeholder="ID FactuSOL del cliente" /></div>
         <div className="field"><label>Fecha envío cliente</label><input className="input" type="date" value={isoDate(form.fecha_envio_cliente)} onChange={e => set('fecha_envio_cliente', e.target.value || null)} /></div>
         <div className="field"><label>Fecha aceptación</label><input className="input" type="date" value={isoDate(form.fecha_aceptacion)} onChange={e => set('fecha_aceptacion', e.target.value || null)} /></div>
+        <div className="field"><label>Nº pedido cliente</label><input className="input" value={form.numero_pedido_cliente || ''} onChange={e => set('numero_pedido_cliente', e.target.value)} placeholder="Referencia interna del cliente" /></div>
+        <div className="field"><label>Fecha medición</label><input className="input" type="date" value={isoDate(form.fecha_medicion)} onChange={e => set('fecha_medicion', e.target.value || null)} /></div>
+        <div className="field"><label>Fecha recepción mercancía</label><input className="input" type="date" value={isoDate(form.fecha_recepcion_mercancia)} onChange={e => set('fecha_recepcion_mercancia', e.target.value || null)} /></div>
+        <div className="field"><label>Plazo confección</label><input className="input" type="date" value={isoDate(form.plazo_confeccion)} onChange={e => set('plazo_confeccion', e.target.value || null)} /></div>
+        <div className="field"><label>Fecha entrega cliente</label><input className="input" type="date" value={isoDate(form.fecha_entrega_cliente)} onChange={e => set('fecha_entrega_cliente', e.target.value || null)} /></div>
         <div className="field"><label>Fecha cancelación</label><input className="input" type="date" value={isoDate(form.fecha_cancelacion_rechazo)} onChange={e => set('fecha_cancelacion_rechazo', e.target.value || null)} /></div>
       </div>
       <div className="mt-3"><div className="field"><label>Motivo cancelación</label><textarea rows={2} value={form.motivo_cancelacion_rechazo || ''} onChange={e => set('motivo_cancelacion_rechazo', e.target.value)} style={{ width: '100%' }} /></div></div>

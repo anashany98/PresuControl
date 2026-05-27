@@ -1,7 +1,7 @@
 import { CheckCircle2, Download, ShieldAlert } from 'lucide-react'
 import { PageHeader } from '../components/PageHeader'
 import { PriorityBadge, StateBadge } from '../components/Badges'
-import { api, exportUrl, fmtDate, type Presupuesto } from '../utils/api'
+import { api, exportUrl, fmtDate, getAuthToken, type Presupuesto } from '../utils/api'
 import { useData } from '../utils/useData'
 import { Link } from 'react-router-dom'
 import { PedidoSummaryBadge } from '../components/PedidoSummary'
@@ -11,7 +11,20 @@ import { EmptyState } from '../components/EmptyState'
 export function Riesgo() {
   const { data, loading, error } = useData<Presupuesto[]>(() => api.get('/riesgo'), [])
   return <>
-    <PageHeader title="Riesgo de olvido" subtitle="Pantalla prioritaria: aceptados sin pedido, pedidos sin plazo, límites vencidos e incidencias." actions={<a className="btn" href={exportUrl('aceptados_sin_pedido')}><Download size={16}/>Exportar críticos</a>} />
+    <PageHeader title="Riesgo de olvido" subtitle="Pantalla prioritaria: aceptados sin pedido, pedidos sin plazo, límites vencidos e incidencias." actions={<button className="btn" onClick={async () => {
+    const token = getAuthToken()
+    if (!token) return
+    const url = exportUrl('aceptados_sin_pedido')
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+    if (!res.ok) return
+    const blob = await res.blob()
+    const downloadUrl = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = downloadUrl
+    a.download = `presucontrol_criticos_${new Date().toISOString().slice(0, 10)}.xlsx`
+    a.click()
+    URL.revokeObjectURL(downloadUrl)
+}}><Download size={16}/>Exportar críticos</button>} />
     <div className="notice" style={{ marginBottom: 16 }}><ShieldAlert size={16}/> Esta vista debe revisarse varias veces al día. Su objetivo es evitar que un presupuesto aceptado quede sin pedido proveedor.</div>
     {error && <div className="error">{error}</div>}
     {loading ? <SkeletonTable rows={5} /> : (!data || data.length === 0 ? <EmptyState icon={CheckCircle2} title="Sin presupuestos en riesgo" description="No hay presupuestos con riesgo de olvido. Todo esta bajo control." actions={[{ label: 'Ir al Dashboard', to: '/' }]} /> : <div className="table-wrap"><table>

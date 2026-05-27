@@ -43,8 +43,6 @@ docker compose exec postgres pg_isready -U presucontrol -d presucontrol
 ## 2. Envío de correos SMTP falla
 
 ### Síntomas
-- Registro de usuario no recibe email de verificación.
-- Reset de contraseña no envía email.
 - Avisos automáticos no llegan.
 
 ### Diagnóstico

@@ -1,7 +1,11 @@
-export const API_URL = import.meta.env.VITE_API_URL || '/api'
+export const API_URL = import.meta.env.VITE_API_URL || '/api/v1'
 export const AUTH_TOKEN_KEY = 'presucontrol_token'
 
 export function getAuthToken() {
+  const cookie = document.cookie
+    .split('; ')
+    .find(row => row.startsWith(`${AUTH_TOKEN_KEY}=`))
+  if (cookie) return cookie.split('=')[1]
   return sessionStorage.getItem(AUTH_TOKEN_KEY)
 }
 
@@ -11,6 +15,7 @@ export function storeAuthToken(token: string) {
 }
 
 export function clearAuthToken() {
+  document.cookie = `${AUTH_TOKEN_KEY}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; secure; samesite=strict`
   sessionStorage.removeItem(AUTH_TOKEN_KEY)
   localStorage.removeItem(AUTH_TOKEN_KEY)
   localStorage.removeItem('presucontrol_user')
@@ -44,6 +49,12 @@ export type Presupuesto = {
   estado: string
   proveedor?: string | null
   pedido_proveedor_realizado: boolean
+  numero_pedido_cliente?: string | null
+  codigo_cliente_factusol?: string | null
+  fecha_medicion?: string | null
+  fecha_recepcion_mercancia?: string | null
+  plazo_confeccion?: string | null
+  fecha_entrega_cliente?: string | null
   numero_pedido_proveedor?: string | null
   fecha_pedido_proveedor?: string | null
   plazo_proveedor?: string | null
@@ -91,6 +102,8 @@ export type UserAdmin = {
   aprobado_en?: string | null
   aprobado_por?: string | null
   creado_en: string
+  ultimo_login?: string | null
+  presupuestos_count: number
 }
 
 export type EmailLog = {
@@ -166,7 +179,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     headers: { ...headers, ...(options.headers || {}) },
   })
   if (!res.ok) {
-    const isAuthPublicPath = path === '/auth/me' || path.startsWith('/auth/login') || path.startsWith('/auth/register') || path.startsWith('/auth/password/')
+    const isAuthPublicPath = path === '/auth/me' || path.startsWith('/auth/login') || path.startsWith('/auth/register')
     if (res.status === 401 && !isAuthPublicPath) {
       clearAuthToken()
       window.location.href = '/login'
@@ -235,6 +248,12 @@ export type KanbanPayload = {
   fecha_envio_cliente?: string
   fecha_aceptacion?: string
   proveedor?: string
+  numero_pedido_cliente?: string
+  codigo_cliente_factusol?: string
+  fecha_medicion?: string
+  fecha_recepcion_mercancia?: string
+  plazo_confeccion?: string
+  fecha_entrega_cliente?: string
   numero_pedido_proveedor?: string
   fecha_pedido_proveedor?: string
   plazo_proveedor?: string

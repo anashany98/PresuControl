@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react'
 
 export type ValidationRule = {
   field: string
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   validate: (value: any, allValues?: any) => string | null
 }
 

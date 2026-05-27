@@ -18,6 +18,12 @@ type KanbanPayload = {
   fecha_envio_cliente?: string
   fecha_aceptacion?: string
   proveedor?: string
+  numero_pedido_cliente?: string
+  codigo_cliente_factusol?: string
+  fecha_medicion?: string
+  fecha_recepcion_mercancia?: string
+  plazo_confeccion?: string
+  fecha_entrega_cliente?: string
   numero_pedido_proveedor?: string
   fecha_pedido_proveedor?: string
   plazo_proveedor?: string
@@ -41,7 +47,7 @@ const actionByStatus: Record<string, string | null> = {
   'Bloqueado / incidencia': 'bloquear',
 }
 
-function VirtualizedColumn({ columnData, columns, columnIndex, focusId, focusedCard, setFocusedCard, onPedidoClick, onTarget, onExpand, collapsed, onToggleCollapse, isDragOver, onDragOver, onDragLeave, savingId }: {
+function VirtualizedColumn({ columnData, columns, columnIndex, focusId, focusedCard, setFocusedCard, onPedidoClick, onTarget, onExpand, collapsed, onToggleCollapse, isDragOver, onDragOver, onDragLeave, onDrop, savingId }: {
   columnData: Presupuesto[]
   columns: string[]
   columnIndex: number
@@ -56,6 +62,7 @@ function VirtualizedColumn({ columnData, columns, columnIndex, focusId, focusedC
   isDragOver?: boolean
   onDragOver?: (e: React.DragEvent) => void
   onDragLeave?: () => void
+  onDrop?: (e: React.DragEvent) => void
   savingId?: number | null
 }) {
   const parentRef = useRef<HTMLDivElement>(null)
@@ -71,7 +78,7 @@ function VirtualizedColumn({ columnData, columns, columnIndex, focusId, focusedC
   })
 
   return (
-    <div className={`kanban-col ${collapsed ? 'kanban-col-collapsed' : ''} ${isDragOver ? 'ring-2 ring-blue-300 bg-blue-50' : ''}`} ref={parentRef} style={collapsed ? { overflow: 'hidden', maxHeight: 'auto' } : { overflow: 'auto', maxHeight: 'calc(100vh - 200px)' }} role="list" aria-label={`Columna ${currentStatus} — ${columnData.length} presupuestos`} onDragOver={onDragOver} onDragLeave={onDragLeave}>
+    <div className={`kanban-col ${collapsed ? 'kanban-col-collapsed' : ''} ${isDragOver ? 'ring-2 ring-blue-300 bg-blue-50' : ''}`} ref={parentRef} style={collapsed ? { overflow: 'hidden', maxHeight: 'auto' } : { overflow: 'auto', maxHeight: 'calc(100vh - 200px)' }} role="list" aria-label={`Columna ${currentStatus} — ${columnData.length} presupuestos`} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
       <div className="flex items-center justify-between mb-2">
         <h3 style={{ margin: 0 }}>{currentStatus} <span className="muted">{columnData.length}</span></h3>
         <button
@@ -90,7 +97,7 @@ function VirtualizedColumn({ columnData, columns, columnIndex, focusId, focusedC
               Sin presupuestos en esta fase
             </div>
           ) : (
-          <div style={{ height: `${rowVirtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}>
+          <div style={{ height: `${rowVirtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }} onDragOver={(e) => e.preventDefault()}>
             {rowVirtualizer.getVirtualItems().map((virtualRow) => (
               <div
                 key={virtualRow.index}
@@ -236,13 +243,13 @@ export function Kanban() {
     return [...set].sort()
   }, [columnData])
 
-  function drop(status: string) {
-    if (!dragId) return
-    const presupuesto = Object.values(columnData).flat().find(p => p.id === dragId)
+  function drop(id: number, status: string) {
+    const presupuesto = Object.values(columnData).flat().find(p => p.id === id)
     if (!presupuesto || presupuesto.estado === status) return
     setMsg(null)
     setTarget({ presupuesto, status })
     setDragId(null)
+    setDragOverCol(null)
   }
 
   async function apply(payload: KanbanPayload) {
@@ -446,6 +453,12 @@ export function Kanban() {
             setDragOverCol(col)
           }}
           onDragLeave={() => setDragOverCol(null)}
+          onDrop={(e: React.DragEvent) => {
+            e.preventDefault()
+            const id = Number(e.dataTransfer.getData('text/plain'))
+            if (id) drop(id, col)
+            setDragOverCol(null)
+          }}
           savingId={savingId}
         />
       ))}
@@ -468,6 +481,12 @@ function KanbanModal({ presupuesto, status, onClose, onSubmit, saving }: { presu
     fecha_envio_cliente: isoDate(presupuesto.fecha_envio_cliente) || new Date().toISOString().slice(0, 10),
     fecha_aceptacion: isoDate(presupuesto.fecha_aceptacion) || new Date().toISOString().slice(0, 10),
     proveedor: presupuesto.proveedor || '',
+    numero_pedido_cliente: presupuesto.numero_pedido_cliente || '',
+    codigo_cliente_factusol: presupuesto.codigo_cliente_factusol || '',
+    fecha_medicion: isoDate(presupuesto.fecha_medicion),
+    fecha_recepcion_mercancia: isoDate(presupuesto.fecha_recepcion_mercancia),
+    plazo_confeccion: isoDate(presupuesto.plazo_confeccion),
+    fecha_entrega_cliente: isoDate(presupuesto.fecha_entrega_cliente),
     numero_pedido_proveedor: presupuesto.numero_pedido_proveedor || '',
     fecha_pedido_proveedor: isoDate(presupuesto.fecha_pedido_proveedor) || new Date().toISOString().slice(0, 10),
     plazo_proveedor: isoDate(presupuesto.plazo_proveedor),
@@ -485,7 +504,7 @@ function KanbanModal({ presupuesto, status, onClose, onSubmit, saving }: { presu
       <p className="muted">Presupuesto {presupuesto.numero_presupuesto}. Se guardará con control de versión v{presupuesto.version}.</p>
       <div className="form-grid two">
         {status === 'Enviado al cliente' && <><Field label="Fecha envío cliente"><input className="input" type="date" value={payload.fecha_envio_cliente || ''} onChange={e => set('fecha_envio_cliente', e.target.value)} /></Field><Field label="Siguiente acción"><input className="input" value={payload.siguiente_accion || ''} onChange={e => set('siguiente_accion', e.target.value)} /></Field><Field label="Fecha límite"><input className="input" type="date" value={payload.fecha_limite_siguiente_accion || ''} onChange={e => set('fecha_limite_siguiente_accion', e.target.value)} /></Field></>}
-        {status === 'Aceptado - pendiente pedido proveedor' && <><Field label="Fecha aceptación"><input className="input" type="date" value={payload.fecha_aceptacion || ''} onChange={e => set('fecha_aceptacion', e.target.value)} /></Field><Field label="Responsable"><input className="input" value={payload.responsable_actual || ''} onChange={e => set('responsable_actual', e.target.value)} /></Field><Field label="Siguiente acción"><input className="input" value={payload.siguiente_accion || ''} onChange={e => set('siguiente_accion', e.target.value)} /></Field><Field label="Fecha límite"><input className="input" type="date" value={payload.fecha_limite_siguiente_accion || ''} onChange={e => set('fecha_limite_siguiente_accion', e.target.value)} /></Field></>}
+        {status === 'Aceptado - pendiente pedido proveedor' && <><Field label="Fecha aceptación"><input className="input" type="date" value={payload.fecha_aceptacion || ''} onChange={e => set('fecha_aceptacion', e.target.value)} /></Field><Field label="Nº pedido cliente"><input className="input" value={payload.numero_pedido_cliente || ''} onChange={e => set('numero_pedido_cliente', e.target.value)} placeholder="Referencia interna del cliente" /></Field><Field label="Responsable"><input className="input" value={payload.responsable_actual || ''} onChange={e => set('responsable_actual', e.target.value)} /></Field><Field label="Siguiente acción"><input className="input" value={payload.siguiente_accion || ''} onChange={e => set('siguiente_accion', e.target.value)} /></Field><Field label="Fecha límite"><input className="input" type="date" value={payload.fecha_limite_siguiente_accion || ''} onChange={e => set('fecha_limite_siguiente_accion', e.target.value)} /></Field></>}
         {status === 'Pedido proveedor realizado' && <><Field label="Proveedor"><input className="input" value={payload.proveedor || ''} onChange={e => set('proveedor', e.target.value)} /></Field><Field label="Nº pedido proveedor"><input className="input" value={payload.numero_pedido_proveedor || ''} onChange={e => set('numero_pedido_proveedor', e.target.value)} /></Field><Field label="Fecha pedido proveedor"><input className="input" type="date" value={payload.fecha_pedido_proveedor || ''} onChange={e => set('fecha_pedido_proveedor', e.target.value)} /></Field></>}
         {status === 'Plazo proveedor confirmado' && <><Field label="Plazo proveedor"><input className="input" type="date" value={payload.plazo_proveedor || ''} onChange={e => set('plazo_proveedor', e.target.value)} /></Field><Field label="Fecha prevista entrega"><input className="input" type="date" value={payload.fecha_prevista_entrega || ''} onChange={e => set('fecha_prevista_entrega', e.target.value)} /></Field></>}
         {status === 'Bloqueado / incidencia' && <><Field label="Responsable"><input className="input" value={payload.responsable_actual || ''} onChange={e => set('responsable_actual', e.target.value)} /></Field><Field label="Descripción incidencia"><textarea rows={4} value={payload.descripcion_incidencia || ''} onChange={e => set('descripcion_incidencia', e.target.value)} /></Field></>}
