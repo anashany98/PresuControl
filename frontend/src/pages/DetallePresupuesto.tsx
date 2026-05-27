@@ -1,12 +1,12 @@
 import { useState, type ReactNode } from 'react'
-import { Link, useParams } from 'react-router-dom'
-import { Archive, ArrowLeft, CheckCircle2, MessageSquarePlus, Package, PackageCheck, Pencil, Plus, RefreshCw, Send, ShieldAlert, Trash2, Truck, Users, XCircle } from 'lucide-react'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { Archive, ArrowLeft, Calendar, CheckCircle2, MessageSquarePlus, Package, PackageCheck, Pencil, Plus, RefreshCw, Send, ShieldAlert, Trash2, Truck, Users, XCircle } from 'lucide-react'
 import { PageHeader } from '../components/PageHeader'
 import { PresupuestoForm } from '../components/PresupuestoForm'
 import { OptionInput } from '../components/OptionInput'
 import { PriorityBadge, StateBadge } from '../components/Badges'
 import { SkeletonCard } from '../components/Skeleton'
-import { api, fmtDate, isoDate, euro, type Presupuesto, type PedidoProveedor } from '../utils/api'
+import { api, fmtDate, isoDate, euro, type Presupuesto, type PedidoProveedor, type RecommendedActionType } from '../utils/api'
 import { useAuth } from '../utils/auth'
 import { useData } from '../utils/useData'
 import { ProveedorList } from '../components/ProveedorList'
@@ -14,7 +14,7 @@ import { useToast } from '../utils/toast'
 import { PedidoSummaryBadge } from '../components/PedidoSummary'
 import { useMetadataOptions } from '../utils/useMetadataOptions'
 import { Modal } from '../components/Modal'
-import { PRIORITY_COLOR } from '../utils/tokens'
+import { mergeOperationalContext, type OperationalContext } from '../utils/workflow'
 
 type Comentario = { id: number; comentario: string; nombre_opcional?: string; usuario_nombre?: string; usuario_email?: string; creado_en: string }
 type Historial = { id: number; campo: string; valor_anterior?: string; valor_nuevo?: string; descripcion: string; nombre_opcional?: string; usuario_nombre?: string; usuario_email?: string; creado_en: string }
@@ -62,8 +62,22 @@ const ACTIONS_BY_ESTADO: Record<string, ActionDef[]> = {
   ],
 }
 
+function urlTabToTab(value: string | null): Tab {
+  if (value === 'pedidos' || value === 'historial' || value === 'proveedores') return value
+  return 'form'
+}
+
+function actionToIcon(action: RecommendedActionType) {
+  if (action === 'crear_pedido') return <PackageCheck size={14} />
+  if (action === 'confirmar_plazo') return <Truck size={14} />
+  if (action === 'actualizar_fecha') return <Calendar size={14} />
+  if (action === 'resolver_incidencia') return <ShieldAlert size={14} />
+  return <CheckCircle2 size={14} />
+}
+
 export function DetallePresupuesto() {
   const { id } = useParams()
+  const [searchParams] = useSearchParams()
   const { data, loading, error, reload, setData } = useData<Presupuesto>(() => api.get(`/presupuestos/${id}`), [id])
   const comments = useData<Comentario[]>(() => api.get(`/presupuestos/${id}/comentarios`), [id])
   const history = useData<Historial[]>(() => api.get(`/presupuestos/${id}/historial`), [id])
@@ -71,11 +85,11 @@ export function DetallePresupuesto() {
   const [saveError, setSaveError] = useState<string | null>(null)
   const [comment, setComment] = useState('')
   const [commentName, setCommentName] = useState('')
-  const [quickAction, setQuickAction] = useState<string | null>(null)
+  const [quickAction, setQuickAction] = useState<string | null>(() => searchParams.get('action') === 'confirmar_plazo' ? 'confirmar_plazo' : null)
   const [archiveReason, setArchiveReason] = useState('')
   const [showArchive, setShowArchive] = useState(false)
-  const [activeTab, setActiveTab] = useState<Tab>('form')
-  const [showPedidoForm, setShowPedidoForm] = useState(false)
+  const [activeTab, setActiveTab] = useState<Tab>(() => urlTabToTab(searchParams.get('tab')))
+  const [showPedidoForm, setShowPedidoForm] = useState(() => searchParams.get('action') === 'crear_pedido')
   const [editingPedido, setEditingPedido] = useState<PedidoProveedor | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null)
   const toast = useToast()
@@ -139,6 +153,19 @@ export function DetallePresupuesto() {
   }
 
   const allPedidos = pedidos.data || data.pedidos || []
+  const operational = mergeOperationalContext({ ...data, pedidos: allPedidos })
+  const focusedTab = urlTabToTab(operational.accion_recomendada.target_tab || 'datos')
+
+  function runRecommendedAction() {
+    const action = operational.accion_recomendada.tipo
+    setActiveTab(focusedTab)
+    if (action === 'crear_pedido') {
+      setEditingPedido(null)
+      setShowPedidoForm(true)
+    } else if (action === 'confirmar_plazo') {
+      setQuickAction('confirmar_plazo')
+    }
+  }
 
   return <>
     <PageHeader
@@ -170,6 +197,13 @@ export function DetallePresupuesto() {
       <PedidoSummaryBadge presupuesto={{ ...data, pedidos: allPedidos }} variant="detail" />
     </div>
 
+    <GuidancePanel
+      data={data}
+      pedidos={allPedidos}
+      operational={operational}
+      onAction={runRecommendedAction}
+    />
+
     {/* Smart Actions */}
     {availableActions.length > 0 && (
       <div className="flex flex-wrap gap-2 mb-4">
@@ -187,12 +221,12 @@ export function DetallePresupuesto() {
     {/* Tabs */}
     <div className="border-b border-border mb-4 overflow-x-auto">
       <div className="flex min-w-max">
-        <TabBtn active={activeTab === 'form'} onClick={() => setActiveTab('form')}>Datos</TabBtn>
-        <TabBtn active={activeTab === 'pedidos'} onClick={() => setActiveTab('pedidos')}>
+        <TabBtn active={activeTab === 'form'} highlight={focusedTab === 'form'} onClick={() => setActiveTab('form')}>Datos</TabBtn>
+        <TabBtn active={activeTab === 'pedidos'} highlight={focusedTab === 'pedidos'} onClick={() => setActiveTab('pedidos')}>
           <Package size={14}/>Pedidos {allPedidos.length > 0 ? `(${allPedidos.length})` : ''}
         </TabBtn>
-        <TabBtn active={activeTab === 'historial'} onClick={() => setActiveTab('historial')}>Historial</TabBtn>
-        <TabBtn active={activeTab === 'proveedores'} onClick={() => setActiveTab('proveedores')}><Users size={14}/>Proveedores</TabBtn>
+        <TabBtn active={activeTab === 'historial'} highlight={focusedTab === 'historial'} onClick={() => setActiveTab('historial')}>Historial</TabBtn>
+        <TabBtn active={activeTab === 'proveedores'} highlight={focusedTab === 'proveedores'} onClick={() => setActiveTab('proveedores')}><Users size={14}/>Proveedores</TabBtn>
       </div>
     </div>
 
@@ -218,6 +252,12 @@ export function DetallePresupuesto() {
           <h3 style={{ margin: 0 }}>Pedidos a Proveedor</h3>
           <button className="btn secondary small" onClick={() => { setEditingPedido(null); setShowPedidoForm(true) }}><Plus size={14}/>Nuevo pedido</button>
         </div>
+        {focusedTab === 'pedidos' && (
+          <div className="pedido-work-alert">
+            <strong>{operational.accion_recomendada.label}</strong>
+            <span>{operational.motivos.join(' · ')}</span>
+          </div>
+        )}
         {allPedidos.length === 0 ? (
           <p className="muted text-center py-6">Sin pedidos registrados. Crea uno con el botón de arriba.</p>
         ) : (
@@ -293,11 +333,53 @@ export function DetallePresupuesto() {
   </>
 }
 
-function TabBtn({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
+function GuidancePanel({
+  data,
+  pedidos,
+  operational,
+  onAction,
+}: {
+  data: Presupuesto
+  pedidos: PedidoProveedor[]
+  operational: OperationalContext
+  onAction: () => void
+}) {
+  return (
+    <section className={`guidance-panel guidance-panel-${operational.prioridad_operativa}`}>
+      <div className="guidance-main">
+        <div className="guidance-heading">
+          <span>Qué falta ahora</span>
+          <StateBadge value={data.estado} />
+        </div>
+        <div className="guidance-next">
+          <strong>{operational.accion_recomendada.label}</strong>
+          <span>{operational.motivos[0] || 'Seguimiento pendiente'}</span>
+        </div>
+        <div className="guidance-chip-row">
+          {operational.motivos.map(motivo => (
+            <span key={motivo} className="work-chip">{motivo}</span>
+          ))}
+          {operational.faltantes.map(faltante => (
+            <span key={faltante} className="work-chip work-chip-muted">Falta {faltante}</span>
+          ))}
+        </div>
+      </div>
+      <div className="guidance-side">
+        <PedidoSummaryBadge presupuesto={{ ...data, pedidos }} variant="mini" />
+        <button className="btn primary small" onClick={onAction}>
+          {actionToIcon(operational.accion_recomendada.tipo)}
+          {operational.accion_recomendada.label}
+        </button>
+      </div>
+    </section>
+  )
+}
+
+function TabBtn({ active, highlight, onClick, children }: { active: boolean; highlight?: boolean; onClick: () => void; children: ReactNode }) {
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-1.5 px-3 py-2 text-sm whitespace-nowrap border-b-2 transition-colors duration-150 ${active ? 'border-brand text-ink font-semibold' : 'border-transparent text-ink-muted hover:text-ink'}`}
+      className={`flex items-center gap-1.5 px-3 py-2 text-sm whitespace-nowrap border-b-2 transition-colors duration-150 ${active ? 'border-brand text-ink font-semibold' : highlight ? 'border-warning text-ink font-semibold' : 'border-transparent text-ink-muted hover:text-ink'}`}
     >
       {children}
     </button>

@@ -3,6 +3,7 @@ import type { Presupuesto } from '../utils/api'
 import { euro } from '../utils/api'
 import { PRIORITY_COLOR } from '../utils/tokens'
 import { getPedidoSummary } from '../utils/pedidoSummary'
+import { mergeOperationalContext, type OperationalContext } from '../utils/workflow'
 
 interface KanbanCardProps {
   presupuesto: Presupuesto
@@ -36,6 +37,18 @@ function truncate(str: string, maxLen: number): string {
 function formatShortDate(dateStr: string): string {
   const d = new Date(dateStr)
   return d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' })
+}
+
+function kanbanBlockers(operational: OperationalContext): string[] {
+  const labels: string[] = []
+  const text = operational.motivos.join(' ').toLowerCase()
+  const missing = operational.faltantes.join(' ').toLowerCase()
+  if (text.includes('aceptado sin pedido') || missing.includes('pedido proveedor')) labels.push('sin pedido')
+  if (text.includes('plazo proveedor') || missing.includes('plazo proveedor')) labels.push('sin plazo')
+  if (text.includes('vencid')) labels.push('fecha vencida')
+  if (text.includes('incidencia')) labels.push('incidencia')
+  if (text.includes('pedido sin fecha') || missing.includes('pedido sin fecha')) labels.push('sin fecha')
+  return [...new Set(labels)]
 }
 
 function DateUrgency({ dateStr }: { dateStr: string }) {
@@ -112,10 +125,14 @@ export function KanbanCard({
 }: KanbanCardProps) {
   const pri = (presupuesto.prioridad_calculada || 'Verde').toLowerCase()
   const barColor = PRIORITY_COLOR[presupuesto.prioridad_calculada] || '#d1d5db'
+  const operational = mergeOperationalContext(presupuesto)
+  const blockers = kanbanBlockers(operational)
+  const targetTab = operational.accion_recomendada.target_tab || 'datos'
+  const detailHref = `/presupuestos/${presupuesto.id}?tab=${targetTab}&action=${operational.accion_recomendada.tipo}`
 
   return (
     <div
-      className={`bg-white border border-border rounded-lg overflow-hidden transition-all duration-150 hover:bg-surface-hover hover:shadow-soft ${isFocused ? 'ring-2 ring-brand-200' : ''} ${saving ? 'opacity-60' : ''}`}
+      className={`bg-white border border-border rounded-lg overflow-hidden transition-all duration-150 hover:bg-surface-hover hover:shadow-soft ${blockers.length ? 'kanban-blocked' : ''} ${isFocused ? 'ring-2 ring-brand-200' : ''} ${saving ? 'opacity-60' : ''}`}
       style={{ position: 'relative' }}
       draggable
       role="listitem"
@@ -179,6 +196,12 @@ export function KanbanCard({
             </div>
           )}
 
+          {blockers.length > 0 && (
+            <div className="kanban-blockers" aria-label="Bloqueos del presupuesto">
+              {blockers.map(label => <span key={label} className="kanban-blocker-chip">{label}</span>)}
+            </div>
+          )}
+
           {/* Divider */}
           <div className="border-t border-border mb-2" />
 
@@ -199,7 +222,7 @@ export function KanbanCard({
               </button>
             )}
             <Link
-              to={`/presupuestos/${presupuesto.id}`}
+              to={detailHref}
               className="text-xs text-gray-500 hover:text-gray-700 border border-gray-200 rounded px-2 py-1"
               onClick={(e) => e.stopPropagation()}
               aria-label={`Ver detalle de ${presupuesto.numero_presupuesto}`}

@@ -158,3 +158,15 @@ export function getPedidoWarningLabels(summary: PedidoSummary): string[] {
   if (summary.pedidosSinImporte) labels.push(`${summary.pedidosSinImporte} sin importe`)
   return labels
 }
+
+export function getPedidoReadableChips(summary: PedidoSummary): string[] {
+  if (summary.totalPedidos === 0) return ['Sin pedidos']
+  const chips = [
+    `${summary.totalPedidos} pedido${summary.totalPedidos === 1 ? '' : 's'}`,
+  ]
+  if (summary.pendientes) chips.push(`${summary.pendientes} pendiente${summary.pendientes === 1 ? '' : 's'}`)
+  if (summary.parciales) chips.push(`${summary.parciales} parcial${summary.parciales === 1 ? '' : 'es'}`)
+  if (summary.completados) chips.push(`${summary.completados} completado${summary.completados === 1 ? '' : 's'}`)
+  chips.push(...getPedidoWarningLabels(summary))
+  return chips
+}
