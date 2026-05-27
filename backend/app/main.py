@@ -245,35 +245,100 @@ COLUMN_ALIASES = {
     "Nº presupuesto FactuSOL": "numero_presupuesto",
     "No presupuesto FactuSOL": "numero_presupuesto",
     "Numero presupuesto FactuSOL": "numero_presupuesto",
+    "Nº PRESUPUESTO": "numero_presupuesto",
+    "Nº Presupuesto": "numero_presupuesto",
     "numero_presupuesto": "numero_presupuesto",
     "Cliente": "cliente",
     "cliente": "cliente",
+    "NOMBRE": "cliente",
+    "Nombre": "cliente",
     "Obra / referencia": "obra_referencia",
     "Obra": "obra_referencia",
+    "OBRA": "obra_referencia",
     "obra_referencia": "obra_referencia",
     "Gestor": "gestor",
     "gestor": "gestor",
     "Fecha presupuesto": "fecha_presupuesto",
     "fecha_presupuesto": "fecha_presupuesto",
+    "FECHA SOLICITUD PRE.": "fecha_presupuesto",
+    "Fecha solicitud pre.": "fecha_presupuesto",
     "Importe": "importe",
     "importe": "importe",
     "Estado": "estado",
     "estado": "estado",
+    # Pedido cliente
+    "nO": "numero_pedido_cliente",
+    "no": "numero_pedido_cliente",
+    "Unnamed: 1": "",
+    "Nª PEDIDO CLIENTE": "numero_pedido_cliente",
+    "Nº PEDIDO CLIENTE": "numero_pedido_cliente",
+    "Nª pedido cliente": "numero_pedido_cliente",
+    "numero_pedido_cliente": "numero_pedido_cliente",
+    # Cliente FactuSOL
+    "CLIENTE": "codigo_cliente_factusol",
+    "Código cliente FactuSOL": "codigo_cliente_factusol",
+    "codigo_cliente_factusol": "codigo_cliente_factusol",
+    # Fechas nuevas
+    "FECHA MEDICIÓN": "fecha_medicion",
+    "fecha_medicion": "fecha_medicion",
+    "Fecha medición": "fecha_medicion",
+    "FECHA RECEPCION MER.": "fecha_recepcion_mercancia",
+    "FECHA RECEPCIÓN MERCANCÍA": "fecha_recepcion_mercancia",
+    "fecha_recepcion_mercancia": "fecha_recepcion_mercancia",
+    "PLAZO CONFECCIÓN EGEA": "plazo_confeccion",
+    "plazo_confeccion": "plazo_confeccion",
+    "Plazo confección": "plazo_confeccion",
+    "ENTREGA CLIENTE": "fecha_entrega_cliente",
+    "fecha_entrega_cliente": "fecha_entrega_cliente",
+    "Entrega cliente": "fecha_entrega_cliente",
+    # Existing optional fields
+    "FECHA ENVÍO PRE.": "fecha_envio_cliente",
+    "Fecha envío cliente": "fecha_envio_cliente",
+    "fecha_envio_cliente": "fecha_envio_cliente",
+    "FEHCA ACEPTACIÓN PRE.": "fecha_aceptacion",
+    "Fecha aceptación": "fecha_aceptacion",
+    "fecha_aceptacion": "fecha_aceptacion",
+    "PROVEEDOR": "proveedor",
+    "proveedor": "proveedor",
+    "PEDIDO PROVEEDOR": "numero_pedido_proveedor",
+    "Nº pedido proveedor": "numero_pedido_proveedor",
+    "numero_pedido_proveedor": "numero_pedido_proveedor",
+    "ENVÍO PROVEEDOR": "fecha_pedido_proveedor",
+    "fecha_pedido_proveedor": "fecha_pedido_proveedor",
+    "PLAZO FABRICACIÓN": "plazo_proveedor",
+    "plazo_proveedor": "plazo_proveedor",
+    "FECHA PREVISTA ENTREGA": "fecha_prevista_entrega",
+    "fecha_prevista_entrega": "fecha_prevista_entrega",
+    "NOTAS": "observaciones",
+    "observaciones": "observaciones",
+    "RESPONSABLE": "responsable_actual",
+    "responsable_actual": "responsable_actual",
+    "GESTOR": "gestor",
+    "INCIDENCIA": "incidencia",
+    "incidencia": "incidencia",
+    "DESCRIPCIÓN INCIDENCIA": "descripcion_incidencia",
+    "descripcion_incidencia": "descripcion_incidencia",
+    "MOTIVO CANCELACIÓN": "motivo_cancelacion_rechazo",
+    "motivo_cancelacion_rechazo": "motivo_cancelacion_rechazo",
+    "FECHA CANCELACIÓN": "fecha_cancelacion_rechazo",
+    "fecha_cancelacion_rechazo": "fecha_cancelacion_rechazo",
+    "SIGUIENTE ACCIÓN": "siguiente_accion",
+    "siguiente_accion": "siguiente_accion",
+    "FECHA LÍMITE": "fecha_limite_siguiente_accion",
+    "fecha_limite_siguiente_accion": "fecha_limite_siguiente_accion",
 }
 
-SERIALIZE_FIELDS = [
-    "id", "numero_presupuesto", "cliente", "obra_referencia", "gestor", "fecha_presupuesto",
-    "fecha_envio_cliente", "fecha_aceptacion", "importe", "estado", "proveedor",
-    "pedido_proveedor_realizado", "numero_pedido_proveedor", "fecha_pedido_proveedor",
-    "plazo_proveedor", "fecha_prevista_entrega", "responsable_actual", "siguiente_accion",
-    "fecha_limite_siguiente_accion", "incidencia", "descripcion_incidencia", "observaciones",
-    "motivo_cancelacion_rechazo", "fecha_cancelacion_rechazo", "archivado", "archivado_en",
-    "archivado_por", "motivo_archivado", "prioridad_calculada", "dias_parado",
-    "fecha_ultima_actualizacion", "creado_en", "actualizado_en", "version",
+OPTIONAL_IMPORT_FIELDS = [
+    "fecha_envio_cliente", "fecha_aceptacion", "codigo_cliente_factusol",
+    "numero_pedido_cliente", "proveedor", "numero_pedido_proveedor",
+    "fecha_pedido_proveedor", "plazo_proveedor", "fecha_prevista_entrega",
+    "fecha_medicion", "fecha_recepcion_mercancia", "plazo_confeccion",
+    "fecha_entrega_cliente", "responsable_actual", "siguiente_accion",
+    "fecha_limite_siguiente_accion", "incidencia", "descripcion_incidencia",
+    "observaciones", "motivo_cancelacion_rechazo", "fecha_cancelacion_rechazo",
 ]
 
-def serialize(obj: Presupuesto) -> dict[str, Any]:
-    return {field: getattr(obj, field) for field in SERIALIZE_FIELDS}
+from .serializers import SERIALIZE_FIELDS, serialize
 
 def to_str(value: Any) -> str | None:
     if value is None:
@@ -677,6 +742,7 @@ def quick_action(presupuesto_id: int, payload: QuickAction, request: Request, db
     elif action == "marcar_aceptado":
         obj.estado = "Aceptado - pendiente pedido proveedor"
         obj.fecha_aceptacion = payload.fecha_aceptacion or obj.fecha_aceptacion or date.today()
+        obj.numero_pedido_cliente = payload.numero_pedido_cliente or obj.numero_pedido_cliente
         actor_name = actor_label(actor)
         if not payload.responsable_actual or payload.responsable_actual == "Compras":
             obj.responsable_actual = actor_name or "Compras"
@@ -1529,6 +1595,12 @@ def prepare_export_rows(rows: list[Presupuesto]) -> list[dict[str, Any]]:
         "Fecha presupuesto": r.fecha_presupuesto,
         "Fecha envío cliente": r.fecha_envio_cliente,
         "Fecha aceptación": r.fecha_aceptacion,
+        "Nº pedido cliente": getattr(r, 'numero_pedido_cliente', None) or None,
+        "Código Cliente FactuSOL": getattr(r, 'codigo_cliente_factusol', None) or None,
+        "Fecha Medición": getattr(r, 'fecha_medicion', None) or None,
+        "Fecha Recepción Mercancía": getattr(r, 'fecha_recepcion_mercancia', None) or None,
+        "Plazo Confección": getattr(r, 'plazo_confeccion', None) or None,
+        "Fecha Entrega Cliente": getattr(r, 'fecha_entrega_cliente', None) or None,
         "Proveedor": r.proveedor,
         "Pedido proveedor realizado": "Sí" if r.pedido_proveedor_realizado else "No",
         "Nº pedido proveedor": r.numero_pedido_proveedor,
@@ -1621,14 +1693,46 @@ def parse_upload(file: UploadFile) -> pd.DataFrame:
         return pd.read_excel(io.BytesIO(raw))
     raise HTTPException(status_code=400, detail="Formato no soportado. Usa CSV, XLSX o XLS.")
 
-def normalize_import_df(df: pd.DataFrame) -> pd.DataFrame:
-    rename = {col: COLUMN_ALIASES.get(str(col).strip(), str(col).strip()) for col in df.columns}
+def normalize_import_df(df: pd.DataFrame, column_mapping: dict[str, str] | None = None) -> pd.DataFrame:
+    if column_mapping:
+        # Filter out empty values
+        active = {k: v for k, v in column_mapping.items() if v}
+        if active:
+            # User-provided custom mapping
+            rename = {col: active.get(col, col) for col in df.columns}
+            drop_cols = [col for col, target in column_mapping.items() if target == "" and col in df.columns]
+        else:
+            rename = {col: COLUMN_ALIASES.get(str(col).strip(), str(col).strip()) for col in df.columns}
+            drop_cols = []
+    else:
+        rename = {col: COLUMN_ALIASES.get(str(col).strip(), str(col).strip()) for col in df.columns}
+        # Drop columns that map to empty string (before renaming)
+        drop_cols = [col for col, target in list(rename.items()) if target == ""]
+        for dc in drop_cols:
+            del rename[dc]
     df = df.rename(columns=rename)
+    if drop_cols:
+        df = df.drop(columns=drop_cols)
     missing = [v for v in REQUIRED_IMPORT_COLUMNS if v not in df.columns]
     if missing:
-        pretty = [REQUIRED_IMPORT_COLUMNS[m] for m in missing]
-        raise HTTPException(status_code=422, detail=f"Faltan columnas obligatorias: {', '.join(pretty)}")
+        # Add missing required columns with default values
+        for m in missing:
+            if m == "importe":
+                df[m] = 0
+            elif m == "estado":
+                df[m] = "Pendiente de enviar"
+            elif m == "gestor":
+                df[m] = "Importado"
+            else:
+                df[m] = ""
     return df
+
+DATE_FIELDS = {
+    "fecha_envio_cliente", "fecha_aceptacion", "fecha_pedido_proveedor",
+    "plazo_proveedor", "fecha_prevista_entrega", "fecha_medicion",
+    "fecha_recepcion_mercancia", "plazo_confeccion", "fecha_entrega_cliente",
+    "fecha_limite_siguiente_accion", "fecha_cancelacion_rechazo",
+}
 
 def row_to_payload(row: pd.Series) -> dict[str, Any]:
     def clean(v):
@@ -1638,19 +1742,127 @@ def row_to_payload(row: pd.Series) -> dict[str, Any]:
             return v.date()
         return v
     data = {k: clean(row.get(k)) for k in REQUIRED_IMPORT_COLUMNS.keys()}
+    # Ensure required string fields are not None
+    for k in ['cliente', 'obra_referencia', 'gestor', 'estado']:
+        if not data.get(k):
+            data[k] = k.replace('_', ' ').title()
+    if data.get('importe') is None:
+        data['importe'] = 0
+    if data.get('fecha_presupuesto') is None:
+        data['fecha_presupuesto'] = date.today()
+    # Optional fields
+    for field in OPTIONAL_IMPORT_FIELDS:
+        if field in row.index:
+            val = clean(row.get(field))
+            if val is not None:
+                data[field] = val
+    # Fallback for numero_presupuesto (after optional fields are loaded)
+    if not data.get('numero_presupuesto'):
+        fallback = str(data.get('numero_pedido_cliente', '') or '')
+        data['numero_presupuesto'] = fallback if fallback else 'Sin numero'
+    # Validate date fields: non-date strings → None
+    for df_field in DATE_FIELDS:
+        val = data.get(df_field)
+        if val is not None and not isinstance(val, date):
+            try:
+                if isinstance(val, (int, float)):
+                    # Excel serial date number
+                    from datetime import datetime as dt
+                    data[df_field] = dt(1899, 12, 30) + pd.Timedelta(days=int(val))
+                else:
+                    data[df_field] = pd.to_datetime(str(val), dayfirst=True).date()
+            except Exception:
+                data[df_field] = None
+    # Clean numeric values in string fields (Excel reads ints as floats)
+    STRING_FIELDS = {'numero_presupuesto', 'codigo_cliente_factusol', 'numero_pedido_cliente',
+                     'numero_pedido_proveedor', 'proveedor', 'responsable_actual',
+                     'siguiente_accion', 'descripcion_incidencia', 'observaciones',
+                     'motivo_cancelacion_rechazo', 'cliente', 'obra_referencia', 'gestor'}
+    for sf in STRING_FIELDS:
+        val = data.get(sf)
+        if isinstance(val, float):
+            if val == int(val):
+                data[sf] = str(int(val))
+            else:
+                data[sf] = str(val)
+        elif val is not None and not isinstance(val, str):
+            data[sf] = str(val)
     if isinstance(data["fecha_presupuesto"], str):
-        data["fecha_presupuesto"] = pd.to_datetime(data["fecha_presupuesto"]).date()
+        data["fecha_presupuesto"] = pd.to_datetime(data["fecha_presupuesto"], dayfirst=True).date()
     data["importe"] = float(str(data["importe"]).replace("€", "").replace(".", "").replace(",", ".")) if isinstance(data["importe"], str) else float(data["importe"])
     data["pedido_proveedor_realizado"] = False
-    data["incidencia"] = False
+    data["incidencia"] = data.get("incidencia", False)
+    if isinstance(data.get("incidencia"), str):
+        data["incidencia"] = data["incidencia"].lower() in {"true", "1", "si", "sí", "yes"}
     return data
 
+
+IMPORT_FIELD_LABELS: dict[str, str] = {
+    "numero_presupuesto": "Nº Presupuesto (requerido)",
+    "cliente": "Cliente / Nombre (requerido)",
+    "obra_referencia": "Obra / Referencia (requerido)",
+    "gestor": "Gestor (requerido)",
+    "fecha_presupuesto": "Fecha Presupuesto (requerido)",
+    "importe": "Importe (requerido)",
+    "estado": "Estado (requerido)",
+    "codigo_cliente_factusol": "Código Cliente FactuSOL",
+    "numero_pedido_cliente": "Nº Pedido Cliente",
+    "fecha_envio_cliente": "Fecha Envío Cliente",
+    "fecha_aceptacion": "Fecha Aceptación",
+    "proveedor": "Proveedor",
+    "numero_pedido_proveedor": "Nº Pedido Proveedor",
+    "fecha_pedido_proveedor": "Fecha Pedido Proveedor",
+    "plazo_proveedor": "Plazo Proveedor",
+    "fecha_prevista_entrega": "Fecha Prevista Entrega",
+    "fecha_medicion": "Fecha Medición",
+    "fecha_recepcion_mercancia": "Fecha Recepción Mercancía",
+    "plazo_confeccion": "Plazo Confección",
+    "fecha_entrega_cliente": "Fecha Entrega Cliente",
+    "responsable_actual": "Responsable Actual",
+    "siguiente_accion": "Siguiente Acción",
+    "fecha_limite_siguiente_accion": "Fecha Límite",
+    "incidencia": "Incidencia",
+    "descripcion_incidencia": "Descripción Incidencia",
+    "observaciones": "Observaciones / Notas",
+    "motivo_cancelacion_rechazo": "Motivo Cancelación",
+    "fecha_cancelacion_rechazo": "Fecha Cancelación",
+    "version": "Versión (para actualizar)",
+    "expected_version": "Versión Esperada (para actualizar)",
+}
+
+
+@app.get("/import/fields")
+def import_fields(request: Request):
+    require_system_manager(request)
+    return {"fields": IMPORT_FIELD_LABELS, "aliases": COLUMN_ALIASES}
+
+
 @app.post("/import/preview", response_model=ImportPreview)
-def import_preview(request: Request, file: UploadFile = File(...), db: Session = Depends(get_db), mode: str = "create_only"):
+def import_preview(request: Request, file: UploadFile = File(...), db: Session = Depends(get_db), mode: str = "create_only", column_mapping: str = "{}"):
     require_system_manager(request)
     if mode not in {"create_only", "update_existing", "upsert"}:
         raise HTTPException(status_code=422, detail="Modo de importación no válido.")
-    df = normalize_import_df(parse_upload(file))
+    mapping = json.loads(column_mapping) if column_mapping and column_mapping != "{}" else None
+    raw_df = parse_upload(file)
+    columnas_originales = [str(c) for c in raw_df.columns.tolist()]
+    mapeo_auto = {str(c): COLUMN_ALIASES.get(str(c).strip(), str(c).strip()) for c in raw_df.columns}
+    try:
+        df = normalize_import_df(raw_df, column_mapping=mapping)
+    except HTTPException as e:
+        return {
+            "total_filas": len(raw_df),
+            "validos": 0,
+            "duplicados_bd": [],
+            "duplicados_archivo": [],
+            "errores": [{"fila": 0, "error": e.detail}],
+            "preview": [],
+            "modo": mode,
+            "nuevos": 0,
+            "actualizables": 0,
+            "cambios_preview": [],
+            "columnas": columnas_originales,
+            "mapeo": mapeo_auto,
+        }
     nums = [str(v).strip() for v in df["numero_presupuesto"].dropna().tolist()]
     seen = set()
     dup_file = sorted({n for n in nums if n in seen or seen.add(n)})
@@ -1711,15 +1923,25 @@ def import_preview(request: Request, file: UploadFile = File(...), db: Session =
         "nuevos": nuevos,
         "actualizables": actualizables,
         "cambios_preview": cambios_preview,
+        "columnas": columnas_originales,
+        "mapeo": mapeo_auto,
     }
 
 
 @app.post("/import/confirm")
-def import_confirm(request: Request, file: UploadFile = File(...), db: Session = Depends(get_db), mode: str = "create_only"):
+def import_confirm(request: Request, file: UploadFile = File(...), db: Session = Depends(get_db), mode: str = "create_only", column_mapping: str = "{}"):
     require_system_manager(request)
     if mode not in {"create_only", "update_existing", "upsert"}:
         raise HTTPException(status_code=422, detail="Modo de importación no válido.")
-    df = normalize_import_df(parse_upload(file))
+    mapping = json.loads(column_mapping) if column_mapping and column_mapping != "{}" else None
+    raw_df = parse_upload(file)
+    try:
+        df = normalize_import_df(raw_df, column_mapping=mapping)
+    except HTTPException as e:
+        raise HTTPException(
+            status_code=422,
+            detail=f"{e.detail} Usa 'Simular y comparar' primero para ajustar el mapeo de columnas."
+        )
     nums = [str(v).strip() for v in df["numero_presupuesto"].dropna().tolist()]
     existing_rows = db.query(Presupuesto).filter(Presupuesto.numero_presupuesto.in_(nums)).all()
     existing = {r.numero_presupuesto: r for r in existing_rows}

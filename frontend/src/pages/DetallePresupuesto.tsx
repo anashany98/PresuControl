@@ -107,7 +107,7 @@ export function DetallePresupuesto() {
     if (!data) return
     setSaveError(null)
     try {
-      const dateFields = ['plazo_proveedor', 'fecha_prevista_entrega', 'fecha_envio_cliente', 'fecha_aceptacion', 'fecha_pedido_proveedor', 'fecha_limite_siguiente_accion', 'fecha_cancelacion_rechazo']
+      const dateFields = ['plazo_proveedor', 'fecha_prevista_entrega', 'fecha_envio_cliente', 'fecha_aceptacion', 'fecha_pedido_proveedor', 'fecha_limite_siguiente_accion', 'fecha_cancelacion_rechazo', 'fecha_medicion', 'fecha_recepcion_mercancia', 'plazo_confeccion', 'fecha_entrega_cliente']
       const cleaned = { ...payload }
       for (const f of dateFields) { if ((cleaned as any)[f] === '') (cleaned as any)[f] = null }
       const updated = await api.post<Presupuesto>(`/presupuestos/${id}/quick-action`, { ...cleaned, expected_version: data.version })
@@ -312,6 +312,12 @@ function QuickActionModal({ action, base, onClose, onSubmit }: { action: string;
     fecha_envio_cliente: isoDate(base.fecha_envio_cliente) || new Date().toISOString().slice(0, 10),
     fecha_aceptacion: isoDate(base.fecha_aceptacion) || new Date().toISOString().slice(0, 10),
     proveedor: base.proveedor || '',
+    numero_pedido_cliente: base.numero_pedido_cliente || '',
+    codigo_cliente_factusol: base.codigo_cliente_factusol || '',
+    fecha_medicion: isoDate(base.fecha_medicion),
+    fecha_recepcion_mercancia: isoDate(base.fecha_recepcion_mercancia),
+    plazo_confeccion: isoDate(base.plazo_confeccion),
+    fecha_entrega_cliente: isoDate(base.fecha_entrega_cliente),
     numero_pedido_proveedor: base.numero_pedido_proveedor || '',
     fecha_pedido_proveedor: isoDate(base.fecha_pedido_proveedor) || new Date().toISOString().slice(0, 10),
     plazo_proveedor: isoDate(base.plazo_proveedor),
@@ -337,6 +343,7 @@ function QuickActionModal({ action, base, onClose, onSubmit }: { action: string;
         </>}
         {action === 'marcar_aceptado' && <>
           <Field label="Fecha aceptación"><input className="input" type="date" value={payload.fecha_aceptacion || ''} onChange={e => set('fecha_aceptacion', e.target.value)} /></Field>
+          <Field label="Nº pedido cliente"><input className="input" value={payload.numero_pedido_cliente || ''} onChange={e => set('numero_pedido_cliente', e.target.value)} placeholder="Referencia interna del cliente" /></Field>
           <Field label="Responsable actual"><input className="input" value={payload.responsable_actual || ''} onChange={e => set('responsable_actual', e.target.value)} placeholder="Compras" /></Field>
           <Field label="Siguiente acción"><input className="input" value={payload.siguiente_accion || ''} onChange={e => set('siguiente_accion', e.target.value)} placeholder="Hacer pedido proveedor" /></Field>
           <Field label="Fecha límite"><input className="input" type="date" value={payload.fecha_limite_siguiente_accion || ''} onChange={e => set('fecha_limite_siguiente_accion', e.target.value)} /></Field>

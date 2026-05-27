@@ -5,13 +5,13 @@ import { PageHeader } from '../components/PageHeader'
 import { PriorityBadge, StateBadge } from '../components/Badges'
 import { SkeletonTable } from '../components/Skeleton'
 import { OptionInput } from '../components/OptionInput'
-import { ESTADOS, api, euro, exportUrl, fmtDate, type PaginatedPresupuestos, type Presupuesto } from '../utils/api'
+import { ESTADOS, api, euro, exportUrl, fmtDate, getAuthToken, API_URL, type PaginatedPresupuestos, type Presupuesto } from '../utils/api'
 import { useData } from '../utils/useData'
 import { useMetadataOptions } from '../utils/useMetadataOptions'
 import { PedidoSummaryBadge } from '../components/PedidoSummary'
 
 const PRIORIDADES = ['Verde','Amarillo','Naranja','Rojo','Crítico']
-const defaultColumns = ['numero','cliente','obra','gestor','estado','importe','fechas','proveedor','pedido','responsable','accion','dias','prioridad','incidencia','ultima']
+const defaultColumns = ['numero','cliente','obra','gestor','estado','importe','fechas','proveedor','np_cliente','codigo_cliente','nuevas_fechas','pedido','responsable','accion','dias','prioridad','incidencia','ultima']
 
 export function Presupuestos() {
   const [params, setParams] = useSearchParams({ page: '1', page_size: '50', ocultar_cerrados: 'true' })
@@ -80,12 +80,25 @@ export function Presupuestos() {
           <label className="check"><input type="checkbox" checked={compact} onChange={e => setCompact(e.target.checked)}/> Vista compacta</label>
           <button className="btn secondary" onClick={reload}><RefreshCw size={16}/>Actualizar</button>
           <button className="btn secondary" onClick={reset}><RotateCcw size={16}/>Limpiar</button>
-          <a className="btn secondary" href={exportUrl('vista_actual', paramsForExport)}><Download size={16}/>Exportar vista</a>
+          <button className="btn secondary" onClick={async () => {
+    const token = getAuthToken()
+    if (!token) return
+    const url = exportUrl('vista_actual', paramsForExport)
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+    if (!res.ok) return
+    const blob = await res.blob()
+    const downloadUrl = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = downloadUrl
+    a.download = `presucontrol_vista_${new Date().toISOString().slice(0, 10)}.xlsx`
+    a.click()
+    URL.revokeObjectURL(downloadUrl)
+}}><Download size={16}/>Exportar vista</button>
         </div>
         <details className="column-panel">
           <summary><Columns3 size={15}/> Columnas visibles</summary>
           <div className="column-grid">{[
-            ['numero','Nº'],['cliente','Cliente'],['obra','Obra'],['gestor','Gestor'],['estado','Estado'],['importe','Importe'],['fechas','Fechas'],['proveedor','Proveedor'],['pedido','Pedido proveedor'],['responsable','Responsable'],['accion','Acción'],['dias','Días parado'],['prioridad','Prioridad'],['incidencia','Incidencia'],['ultima','Última act.']
+            ['numero','Nº'],['cliente','Cliente'],['obra','Obra'],['gestor','Gestor'],['estado','Estado'],['importe','Importe'],['fechas','Fechas'],['proveedor','Proveedor'],['np_cliente','Nº ped. cliente'],['codigo_cliente','Cod. FactuSOL'],['nuevas_fechas','Fechas nuevas'],['pedido','Pedido proveedor'],['responsable','Responsable'],['accion','Acción'],['dias','Días parado'],['prioridad','Prioridad'],['incidencia','Incidencia'],['ultima','Última act.']
           ].map(([key,label]) => <label key={key} className="check"><input type="checkbox" checked={has(key)} onChange={() => toggleColumn(key)}/> {label}</label>)}</div>
         </details>
       </div>
@@ -151,7 +164,7 @@ export function PresupuestosTable({ rows, has, compact = false, sortBy, sortDir,
 
   return <div className={`table-wrap ${compact ? 'compact-table' : ''}`} style={{ marginTop: 16 }} onClick={() => setFocusIdx(-1)} ref={tableRef}><table>
     <thead><tr>
-      {show('numero') && <th>Nº presupuesto</th>}{show('cliente') && <th {...sortable('cliente')}>Cliente{sortArrow('cliente')}</th>}{show('obra') && <th>Obra / referencia</th>}{show('gestor') && <th>Gestor</th>}{show('estado') && <th>Estado</th>}{show('importe') && <th {...sortable('importe')}>Importe{sortArrow('importe')}</th>}{show('fechas') && <th {...sortable('fecha')}>Fechas{sortArrow('fecha')}</th>}{show('proveedor') && <th>Proveedor</th>}{show('pedido') && <th>Pedido proveedor</th>}{show('responsable') && <th>Gestor</th>}{show('accion') && <th>Siguiente acción</th>}{show('dias') && <th {...sortable('dias_parado')}>Días parado{sortArrow('dias_parado')}</th>}{show('prioridad') && <th {...sortable('prioridad')}>Prioridad{sortArrow('prioridad')}</th>}{show('incidencia') && <th>Incidencia</th>}{show('ultima') && <th {...sortable('ultima_actualizacion')}>Última actualización{sortArrow('ultima_actualizacion')}</th>}
+      {show('numero') && <th>Nº presupuesto</th>}{show('cliente') && <th {...sortable('cliente')}>Cliente{sortArrow('cliente')}</th>}{show('obra') && <th>Obra / referencia</th>}{show('gestor') && <th>Gestor</th>}{show('estado') && <th>Estado</th>}{show('importe') && <th {...sortable('importe')}>Importe{sortArrow('importe')}</th>}{show('fechas') && <th {...sortable('fecha')}>Fechas{sortArrow('fecha')}</th>}{show('proveedor') && <th>Proveedor</th>}{show('np_cliente') && <th>Nº ped. cliente</th>}{show('codigo_cliente') && <th>Cod. FactuSOL</th>}{show('nuevas_fechas') && <th>Fechas nuevas</th>}{show('pedido') && <th>Pedido proveedor</th>}{show('responsable') && <th>Gestor</th>}{show('accion') && <th>Siguiente acción</th>}{show('dias') && <th {...sortable('dias_parado')}>Días parado{sortArrow('dias_parado')}</th>}{show('prioridad') && <th {...sortable('prioridad')}>Prioridad{sortArrow('prioridad')}</th>}{show('incidencia') && <th>Incidencia</th>}{show('ultima') && <th {...sortable('ultima_actualizacion')}>Última actualización{sortArrow('ultima_actualizacion')}</th>}
       <th style={{ width: 40 }}></th>
     </tr></thead>
     <tbody>{rows.map((p, idx) => <tr key={p.id} className={`${p.archivado ? 'row-muted' : ''} ${idx === focusIdx ? 'ring-2 ring-brand-200' : ''} group`}>
@@ -163,6 +176,9 @@ export function PresupuestosTable({ rows, has, compact = false, sortBy, sortDir,
       {show('importe') && <td className="money">{euro(p.importe)}</td>}
       {show('fechas') && <td><small>Presu: {fmtDate(p.fecha_presupuesto)}<br/>Envío: {fmtDate(p.fecha_envio_cliente)}<br/>Acept.: {fmtDate(p.fecha_aceptacion)}</small></td>}
       {show('proveedor') && <td>{p.proveedor || '—'}</td>}
+      {show('np_cliente') && <td><span className="font-mono text-xs">{p.numero_pedido_cliente || '—'}</span></td>}
+      {show('codigo_cliente') && <td><span className="font-mono text-xs">{p.codigo_cliente_factusol || '—'}</span></td>}
+      {show('nuevas_fechas') && <td><small>Med: {fmtDate(p.fecha_medicion)}<br/>Rec: {fmtDate(p.fecha_recepcion_mercancia)}<br/>Conf: {fmtDate(p.plazo_confeccion)}<br/>Ent: {fmtDate(p.fecha_entrega_cliente)}</small></td>}
       {show('pedido') && <td>
       {(p.pedidos?.length || 0) === 0 ? <span className="text-ink-muted text-xs">—</span> :
         <div className="text-xs">

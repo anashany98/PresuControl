@@ -225,7 +225,7 @@ crontab -e
 Entrada cron:
 
 ```cron
-0 3 * * * cd /opt/presucontrol && BACKUP_DIR=/var/backups/presucontrol ./backup.sh >> /var/log/presucontrol_backup.log 2>&1
+0 3 * * * cd /opt/presucontrol && BACKUP_DIR=/var/backups/presucontrol ./scripts/backup.sh >> /var/log/presucontrol_backup.log 2>&1
 ```
 
 El script usa por defecto el contenedor `presucontrol-postgres`, conserva 30 días y falla si el fichero generado queda vacío.
@@ -235,7 +235,7 @@ Restauración:
 ```bash
 cd /opt/presucontrol
 docker compose up -d postgres
-./restore.sh /var/backups/presucontrol/presucontrol_YYYYmmdd_HHMMSS.sql.gz
+./scripts/restore.sh /var/backups/presucontrol/presucontrol_YYYYmmdd_HHMMSS.sql.gz
 docker compose up -d
 ```
 

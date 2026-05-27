@@ -14,7 +14,7 @@ type Notificacion = {
   mensaje: string
   leida: boolean
   link: string | null
-  metadata: any
+  metadata: Record<string, unknown>
   creado_en: string
 }
 

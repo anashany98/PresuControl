@@ -123,6 +123,7 @@ export function KanbanCard({
       aria-grabbed={false}
       tabIndex={0}
       onDragStart={(e) => e.dataTransfer.setData('text/plain', String(presupuesto.id))}
+      onDragOver={(e) => e.preventDefault()}
       onClick={() => onFocus?.()}
       onFocus={() => onFocus?.()}
       onKeyDown={(e) => {
@@ -150,6 +151,7 @@ export function KanbanCard({
                 to={`/presupuestos/${presupuesto.id}`}
                 className="font-mono text-brand font-semibold text-sm hover:underline truncate"
                 onClick={(e) => e.stopPropagation()}
+                draggable={false}
               >
                 {presupuesto.numero_presupuesto}
               </Link>
@@ -201,6 +203,7 @@ export function KanbanCard({
               className="text-xs text-gray-500 hover:text-gray-700 border border-gray-200 rounded px-2 py-1"
               onClick={(e) => e.stopPropagation()}
               aria-label={`Ver detalle de ${presupuesto.numero_presupuesto}`}
+              draggable={false}
             >
               Detalle
             </Link>

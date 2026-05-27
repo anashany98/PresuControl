@@ -1,10 +1,10 @@
 import { NavLink } from 'react-router-dom'
-import { X } from 'lucide-react'
+import { X, type LucideIcon } from 'lucide-react'
 import type { NavSection } from './Sidebar'
 
 interface BottomTab {
   to: string
-  icon: any
+  icon: LucideIcon
   label: string
   counter?: string
 }
