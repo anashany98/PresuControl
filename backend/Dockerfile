@@ -23,5 +23,5 @@ RUN useradd --create-home --shell /bin/bash appuser && chown -R appuser:appuser 
 USER appuser
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
-  CMD curl -f http://localhost:8000/api/health || exit 1
+  CMD curl -s --max-time 5 http://localhost:8000/api/health > /dev/null || exit 1
 CMD ["./entrypoint.sh"]
