@@ -102,6 +102,8 @@ export type UserAdmin = {
   aprobado_en?: string | null
   aprobado_por?: string | null
   creado_en: string
+  ultimo_login?: string | null
+  presupuestos_count: number
 }
 
 export type EmailLog = {

@@ -5,7 +5,7 @@ import { api, euro, fmtDate, type Presupuesto } from '../utils/api'
 import { Link } from 'react-router-dom'
 
 export function PresupuestoQuickView({ id, onClose }: { id: number | null; onClose: () => void }) {
-  const { data, loading } = useData<Presupuesto>(() => id ? api.get(`/presupuestos/${id}`) : Promise.resolve(    null), [id])
+  const { data, loading } = useData<Presupuesto>(() => id ? api.get(`/presupuestos/${id}`) : Promise.resolve(undefined as unknown as Presupuesto), [id])
   if (!id) return null
   return (
     <div className="quick-view-panel">
