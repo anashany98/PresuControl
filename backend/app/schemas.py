@@ -358,6 +358,8 @@ class ImportPreview(BaseModel):
     nuevos: int = 0
     actualizables: int = 0
     cambios_preview: list[dict[str, Any]] = Field(default_factory=list)
+    columnas: list[str] = Field(default_factory=list)
+    mapeo: dict[str, str] = Field(default_factory=dict)
 
 
 class UserRegister(BaseModel):
