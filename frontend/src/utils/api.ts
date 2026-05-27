@@ -1,4 +1,4 @@
-export const API_URL = import.meta.env.VITE_API_URL || '/api'
+export const API_URL = import.meta.env.VITE_API_URL || '/api/v1'
 export const AUTH_TOKEN_KEY = 'presucontrol_token'
 
 export function getAuthToken() {
