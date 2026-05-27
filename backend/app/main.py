@@ -147,6 +147,7 @@ async def lifespan(app: FastAPI):
 validate_runtime_config()
 app = FastAPI(title="PresuControl API", version="1.3.1", lifespan=lifespan, **get_fastapi_docs_config())
 app.include_router(health_router, prefix="/api/v1")
+app.include_router(health_router, prefix="/api")
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(presupuestos_router, prefix="/api/v1")
 app.include_router(dashboard_router, prefix="/api/v1")
