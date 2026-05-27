@@ -55,9 +55,6 @@ def _enforce_registration_rate_limit(request: Request, db: Session) -> None:
         if stored > window and attempt.attempts >= 5:
             raise HTTPException(status_code=429, detail="Demasiados registros. Intenta en 10 minutos.")
         attempt.attempts += 1
-    elif attempt:
-        attempt.attempts = 1
-        attempt.window_start = now
     else:
         db.add(RegistrationAttempt(ip=ip, attempts=1, window_start=now))
     db.commit()
