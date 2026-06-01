@@ -5,11 +5,12 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from fastapi import HTTPException, Request
+from fastapi import HTTPException, Request, Response
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 import bcrypt
 
+from .config import is_production
 from .models import Usuario
 
 SECRET_KEY = os.getenv("JWT_SECRET_KEY")
@@ -59,10 +60,7 @@ def is_auth_enabled() -> bool:
 def get_authenticated_user_from_request(request: Request, db: Session) -> Usuario | None:
     if not is_auth_enabled():
         return None
-    auth = request.headers.get("Authorization", "")
-    raw_token = None
-    if auth.startswith("Bearer "):
-        raw_token = auth.removeprefix("Bearer ").strip()
+    raw_token = get_token_from_request(request)
     if not raw_token:
         raise HTTPException(status_code=401, detail="No autenticado: falta token de acceso.")
     try:
@@ -85,3 +83,33 @@ def get_current_user(request: Request) -> Usuario | None:
     if not user:
         raise HTTPException(status_code=401, detail="No autenticado")
     return user
+
+
+def set_auth_cookie(response: Response, token: str) -> None:
+    """Set HttpOnly; Secure; SameSite=Strict cookie with the JWT token."""
+    secure = is_production()
+    # SameSite=Lax needed because EventSource (SSE) may not send cookies on redirect
+    # contexts when SameSite=Strict is used in some browser setups. Cookie is still
+    # secure because it's HttpOnly and (in production) Secure.
+    response.set_cookie(
+        key="access_token",
+        value=token,
+        httponly=True,
+        secure=secure,
+        samesite="lax",
+        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        path="/",
+    )
+
+
+def clear_auth_cookie(response: Response) -> None:
+    """Delete the access_token cookie."""
+    response.delete_cookie(key="access_token", path="/")
+
+
+def get_token_from_request(request: Request) -> str | None:
+    """Extract JWT token from Authorization header or access_token cookie."""
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        return auth.removeprefix("Bearer ").strip()
+    return request.cookies.get("access_token")

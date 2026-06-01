@@ -61,6 +61,7 @@ class Presupuesto(Base):
     creado_en: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     actualizado_en: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    etiquetas: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     comentarios: Mapped[list["Comentario"]] = relationship(back_populates="presupuesto", cascade="all, delete-orphan")
     historial: Mapped[list["HistorialCambio"]] = relationship(back_populates="presupuesto", cascade="all, delete-orphan")

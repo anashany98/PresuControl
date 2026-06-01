@@ -58,9 +58,9 @@ export function Dashboard() {
   const byGestor: Record<string, number> = {}
   const gestorCriticos: Record<string, number> = {}
   uniquePresupuestos.forEach(p => {
-    byGestor[p.gestor] = (byGestor[p.gestor] || 0) + p.importe
+    byGestor[p.gestor ?? ''] = (byGestor[p.gestor ?? ''] || 0) + p.importe
     if (p.prioridad_calculada === 'Rojo' || p.prioridad_calculada === 'Crítico') {
-      gestorCriticos[p.gestor] = (gestorCriticos[p.gestor] || 0) + 1
+      gestorCriticos[p.gestor ?? ''] = (gestorCriticos[p.gestor ?? ''] || 0) + 1
     }
   })
   const gestorStackData = Object.entries(byGestor).sort((a, b) => b[1] - a[1]).slice(0, 5)

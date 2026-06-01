@@ -124,7 +124,7 @@ export function KanbanCard({
   saving,
 }: KanbanCardProps) {
   const pri = (presupuesto.prioridad_calculada || 'Verde').toLowerCase()
-  const barColor = PRIORITY_COLOR[presupuesto.prioridad_calculada] || '#d1d5db'
+  const barColor = PRIORITY_COLOR[presupuesto.prioridad_calculada ?? ''] || '#d1d5db'
   const operational = mergeOperationalContext(presupuesto)
   const blockers = kanbanBlockers(operational)
   const targetTab = operational.accion_recomendada.target_tab || 'datos'

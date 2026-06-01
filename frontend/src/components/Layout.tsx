@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { isSystemAdmin, useAuth } from '../utils/auth'
 import { api, type SidebarCounters } from '../utils/api'
+import { useToast } from '../utils/toast'
 import { useData } from '../utils/useData'
 import { KeyboardShortcutsModal, useKeyboardShortcuts } from './KeyboardShortcuts'
 import { NotifPanel } from './NotifPanel'
@@ -15,13 +16,13 @@ import { ActivityPanel } from './ActivityPanel'
 import { Topbar } from './Topbar'
 import { BottomTabs, MobileDrawer } from './MobileNav'
 import type { NavSection } from './Sidebar'
+import { Breadcrumbs } from './Breadcrumbs'
 
 // ── Navigation configuration ──
 const sections: NavSection[] = [
   {
     label: 'Mi trabajo',
     links: [
-      { to: '/',              label: 'Dashboard',    icon: LayoutDashboard },
       { to: '/mi-trabajo',    label: 'Mi trabajo',   icon: CheckSquare,   counter: 'hoy' },
       { to: '/calendario',    label: 'Calendario',   icon: CalendarDays },
     ],
@@ -56,6 +57,7 @@ const sections: NavSection[] = [
       { to: '/importar',       label: 'Importar',       icon: UploadCloud },
       { to: '/avisos',         label: 'Avisos',         icon: Bell },
       { to: '/usuarios',       label: 'Usuarios',       icon: UserCheck,  counter: 'usuarios_pendientes' },
+      { to: '/',              label: 'Dashboard',    icon: LayoutDashboard },
       { to: '/configuracion',  label: 'Configuración',  icon: Settings },
       { to: '/logs',           label: 'Logs',           icon: ClipboardList },
     ],
@@ -70,6 +72,32 @@ export function Layout() {
 
   const counters = useData<SidebarCounters>(() => api.get('/sidebar-counters'), [])
   const { user } = useAuth()
+  const toast = useToast()
+
+  // SSE: notificaciones en tiempo real
+  // Cookie is sent automatically with same-origin requests (EventSource uses GET,
+  // which sends cookies automatically for same-origin). No manual token needed.
+  useEffect(() => {
+    if (!user) return
+
+    const es = new EventSource("/api/sse/subscribe")
+
+    es.addEventListener('presupuesto_actualizado', (e) => {
+      try {
+        const d = JSON.parse((e as MessageEvent).data)
+        toast.show(`${d.data.numero} → ${d.data.estado.split(' - ')[0]}`, 'info', {
+          label: 'Ver',
+          onClick: () => navigate(`/presupuestos/${d.data.id}`),
+        })
+      } catch { /* ignore */ }
+    })
+
+    es.onerror = () => {
+      es.close()
+    }
+
+    return () => es.close()
+  }, [user?.id])
   const { open: kbOpen, setOpen: setKbOpen } = useKeyboardShortcuts()
 
   const isAdmin = isSystemAdmin(user)
@@ -137,7 +165,8 @@ export function Layout() {
       />
 
       {/* ── Page Content ── */}
-      <main id="main-content" className="main-content" style={{ padding: '20px 24px 80px', flex: 1, width: '100%' }}>
+      <main id="main-content" className="main-content" style={{ padding: '20px 24px 80px', flex: 1, width: '100%', overflow: 'auto' }}>
+        <Breadcrumbs />
         <Outlet />
       </main>
 

@@ -73,7 +73,7 @@ def days_between(start: date | None, end: date | None = None) -> int:
 def empty(value):
     return value is None or (isinstance(value, str) and not value.strip())
 
-def validate_presupuesto(obj, db: Session, existing_id: int | None = None) -> list[str]:
+def validate_presupuesto(obj, db: Session, existing_id: int | None = None, previous_estado: str | None = None) -> list[str]:
     errors: list[str] = []
     warnings: list[str] = []
 

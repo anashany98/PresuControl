@@ -20,7 +20,7 @@ function getDaysUntil(dateStr: string): number {
 }
 
 export function BudgetRow({ item }: BudgetRowProps) {
-  const borderColor = PRIORITY_COLOR[item.prioridad_calculada] || '#d1d5db'
+  const borderColor = PRIORITY_COLOR[item.prioridad_calculada ?? ''] || '#d1d5db'
   const daysUntil = item.fecha_limite_siguiente_accion
     ? getDaysUntil(item.fecha_limite_siguiente_accion)
     : null

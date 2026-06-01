@@ -478,3 +478,20 @@ class SearchResult(BaseModel):
     presupuestos: list[PresupuestoOut]
     comentarios: list[dict[str, Any]]
     historial: list[dict[str, Any]]
+    total_presupuestos: int = 0
+    total_comentarios: int = 0
+    total_historial: int = 0
+    page: int = 1
+    page_size: int = 20
+    total_pages: int = 1
+
+
+class KanbanColumnOut(BaseModel):
+    items: list[PresupuestoOut]
+    total: int
+
+
+class KanbanBoardOut(BaseModel):
+    columns: dict[str, KanbanColumnOut]
+    flow: dict[str, Any]
+    wip_limits: dict[str, int]

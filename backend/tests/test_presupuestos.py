@@ -85,26 +85,26 @@ class TestListPresupuestos:
         """GET /presupuestos devuelve lista de presupuestos."""
         create_presupuesto(db_session, numero="LIST-001")
         create_presupuesto(db_session, numero="LIST-002")
-        response = client.get("/presupuestos")
+        response = client.get("/api/presupuestos")
         assert response.status_code == 200
         data = response.json()
         assert isinstance(data, list)
         assert len(data) >= 2
 
     def test_list_presupuestos_filtro_estado(self, client, db_session):
-        """GET /presupuestos?estado=... filtra correctamente."""
+        """GET /api/presupuestos?estado=... filtra correctamente."""
         create_presupuesto(db_session, numero="FILTER-001", estado="Pendiente de enviar")
         create_presupuesto(db_session, numero="FILTER-002", estado="Enviado al cliente")
-        response = client.get("/presupuestos?estado=Pendiente de enviar")
+        response = client.get("/api/presupuestos?estado=Pendiente de enviar")
         assert response.status_code == 200
         data = response.json()
         for item in data:
             assert item["estado"] == "Pendiente de enviar"
 
     def test_list_presupuestos_con_archivados(self, client, db_session):
-        """GET /presupuestos?include_archivados=true incluye archivados."""
+        """GET /api/presupuestos?include_archivados=true incluye archivados."""
         create_presupuesto(db_session, numero="ARCH-001", archivado=True)
-        response = client.get("/presupuestos?include_archivados=true")
+        response = client.get("/api/presupuestos?include_archivados=true")
         assert response.status_code == 200
         data = response.json()
         assert any(p["numero_presupuesto"] == "ARCH-001" for p in data)
@@ -112,7 +112,7 @@ class TestListPresupuestos:
     def test_list_presupuestos_sin_archivados_por_defecto(self, client, db_session):
         """GET /presupuestos por defecto no incluye archivados."""
         create_presupuesto(db_session, numero="NOARCH-001", archivado=True)
-        response = client.get("/presupuestos")
+        response = client.get("/api/presupuestos")
         assert response.status_code == 200
         data = response.json()
         assert not any(p["numero_presupuesto"] == "NOARCH-001" for p in data)
@@ -398,7 +398,7 @@ class TestComentarios:
             "comentario": "Este es un comentario de prueba",
             "nombre_opcional": "Test User",
         }
-        response = client.post(f"/presupuestos/{p.id}/comentarios", json=payload)
+        response = client.post(f"/api/presupuestos/{p.id}/comentarios", json=payload)
         assert response.status_code == 201, response.json()
         data = response.json()
         assert data["comentario"] == "Este es un comentario de prueba"
@@ -406,9 +406,9 @@ class TestComentarios:
     def test_list_comentarios(self, client, db_session):
         """GET /presupuestos/{id}/comentarios lista comentarios."""
         p = create_presupuesto(db_session, numero="LISTCOM-001")
-        client.post(f"/presupuestos/{p.id}/comentarios", json={"comentario": "Comentario 1"})
-        client.post(f"/presupuestos/{p.id}/comentarios", json={"comentario": "Comentario 2"})
-        response = client.get(f"/presupuestos/{p.id}/comentarios")
+        client.post(f"/api/presupuestos/{p.id}/comentarios", json={"comentario": "Comentario 1"})
+        client.post(f"/api/presupuestos/{p.id}/comentarios", json={"comentario": "Comentario 2"})
+        response = client.get(f"/api/presupuestos/{p.id}/comentarios")
         assert response.status_code == 200
         data = response.json()
         assert isinstance(data, list)
@@ -420,7 +420,7 @@ class TestHistorial:
     def test_historial_vacio_inicialmente(self, client, db_session):
         """GET /presupuestos/{id}/historial devuelve array (vacío inicialmente)."""
         p = create_presupuesto(db_session, numero="HIST-001")
-        response = client.get(f"/presupuestos/{p.id}/historial")
+        response = client.get(f"/api/presupuestos/{p.id}/historial")
         assert response.status_code == 200
         data = response.json()
         assert isinstance(data, list)
