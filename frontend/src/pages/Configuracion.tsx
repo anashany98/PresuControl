@@ -60,8 +60,8 @@ function validateSettings(data: SettingsType) {
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(data.hora_resumen_diario || '')) {
     errors.push('Hora resumen diario: usa formato HH:MM entre 00:00 y 23:59.')
   }
-  for (const [label, emails] of [['Destinatarios', data.emails_destino_avisos], ['Escalado', data.emails_escalado_avisos]] as const) {
-    for (const email of emails) {
+  for (const [label, emails] of [['Destinatarios', (data.emails_destino_avisos || [])], ['Escalado', (data.emails_escalado_avisos || [])]] as const) {
+    for (const email of emails ?? []) {
       if (!isEmail(email)) errors.push(`${label}: email no válido (${email}).`)
     }
   }
@@ -110,22 +110,23 @@ function ListEditor({
 }: {
   title: string
   description: string
-  value: string[]
+  value?: string[]
   onChange: (v: string[]) => void
   importLabel?: string
   importValues?: string[]
 }) {
+  const list = value ?? []
   const [draft, setDraft] = useState('')
   const [bulk, setBulk] = useState(false)
   const [bulkText, setBulkText] = useState('')
 
   const add = () => {
-    const next = cleanList([...value, ...draft.split('\n')])
+    const next = cleanList([...list, ...draft.split('\n')])
     onChange(next)
     setDraft('')
   }
-  const remove = (item: string) => onChange(value.filter(v => v !== item))
-  const importExisting = () => onChange(cleanList([...value, ...importValues]))
+  const remove = (item: string) => onChange(list.filter(v => v !== item))
+  const importExisting = () => onChange(cleanList([...list, ...importValues]))
   const applyBulk = () => {
     onChange(cleanList(bulkText.split('\n')))
     setBulk(false)
@@ -138,11 +139,11 @@ function ListEditor({
           <h3>{title}</h3>
           <p>{description}</p>
         </div>
-        <span className="badge state">{value.length}</span>
+        <span className="badge state">{list.length}</span>
       </div>
       <div className="chip-list">
-        {value.length === 0 && <span className="muted">Sin valores configurados.</span>}
-        {value.map(item => (
+        {list.length === 0 && <span className="muted">Sin valores configurados.</span>}
+        {list.map(item => (
           <span className="config-chip" key={item}>
             {item}
             <button type="button" onClick={() => remove(item)} aria-label={`Eliminar ${item}`}><X size={12} /></button>
@@ -165,7 +166,7 @@ function ListEditor({
       )}
       <div className="toolbar config-list-actions">
         {importLabel && <button className="btn secondary small" type="button" onClick={importExisting}>Importar {importLabel}</button>}
-        <button className="btn secondary small" type="button" onClick={() => { setBulkText(value.join('\n')); setBulk(true) }}>Edición masiva</button>
+        <button className="btn secondary small" type="button" onClick={() => { setBulkText(list.join('\n')); setBulk(true) }}>Edición masiva</button>
       </div>
     </section>
   )
@@ -209,12 +210,12 @@ export function Configuracion() {
   const cleanCurrent = () => {
     setData({
       ...data,
-      estados: cleanList(data.estados),
-      gestores: cleanList(data.gestores),
-      proveedores: cleanList(data.proveedores),
-      tipos_incidencia: cleanList(data.tipos_incidencia),
-      emails_destino_avisos: cleanList(data.emails_destino_avisos),
-      emails_escalado_avisos: cleanList(data.emails_escalado_avisos),
+      estados: cleanList(data.estados || []),
+      gestores: cleanList(data.gestores || []),
+      proveedores: cleanList(data.proveedores || []),
+      tipos_incidencia: cleanList(data.tipos_incidencia || []),
+      emails_destino_avisos: cleanList(data.emails_destino_avisos || []),
+      emails_escalado_avisos: cleanList(data.emails_escalado_avisos || []),
     })
   }
   const reset = () => {
@@ -264,7 +265,7 @@ export function Configuracion() {
         <StatusTile label="Cambios pendientes" value={dirty ? String(changedCount) : '0'} tone={dirty ? 'warn' : 'ok'} />
         <StatusTile label="SMTP" value={data.smtp_configured ? 'Configurado' : 'No configurado'} tone={data.smtp_configured ? 'ok' : 'warn'} />
         <StatusTile label="Avisos automáticos" value={data.avisos_automaticos_activos ? 'Activos' : 'Pausados'} tone={data.avisos_automaticos_activos ? 'ok' : 'neutral'} />
-        <StatusTile label="Destinatarios" value={String(data.emails_destino_avisos.length)} />
+        <StatusTile label="Destinatarios" value={String((data.emails_destino_avisos || []).length)} />
       </div>
 
       {validationErrors.length > 0 && (
@@ -387,7 +388,7 @@ export function Configuracion() {
                     defaultValue=""
                   >
                     <option value="" disabled>Añadir gestor...</option>
-                    {data.gestores.filter(g => !(data.gestores_emails || {})[g]).map(g => (
+                    {(data.gestores || []).filter(g => !(data.gestores_emails || {})[g]).map(g => (
                       <option key={g} value={g}>{g}</option>
                     ))}
                   </select>
@@ -468,8 +469,8 @@ export function Configuracion() {
             <Server size={24} />
           </div>
           <div className="config-summary compact">
-            <StatusTile label="Timezone" value={data.timezone} />
-            <StatusTile label="URL pública" value={data.public_url} />
+            <StatusTile label="Timezone" value={data.timezone ?? ''} />
+            <StatusTile label="URL pública" value={data.public_url ?? ''} />
             <StatusTile label="SMTP" value={data.smtp_configured ? 'Configurado' : 'No configurado'} tone={data.smtp_configured ? 'ok' : 'warn'} />
             <StatusTile label="Automatización" value={data.avisos_automaticos_activos ? 'Activa' : 'Pausada'} />
           </div>

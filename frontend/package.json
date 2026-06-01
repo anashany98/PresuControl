@@ -12,24 +12,24 @@
   "dependencies": {
     "@frontman-ai/vite": "^0.5.4",
     "@tanstack/react-virtual": "^3.13.24",
-    "@vitejs/plugin-react": "6.0.1",
-    "lucide-react": "1.14.0",
-    "react": "19.2.6",
-    "react-dom": "19.2.6",
-    "react-router-dom": "7.15.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "lucide-react": "^0.460.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router-dom": "^7.15.0",
     "recharts": "^2.15.3",
-    "typescript": "6.0.3",
-    "vite": "8.0.12"
+    "typescript": "^5.7.2",
+    "vite": "^5.4.14"
   },
   "devDependencies": {
-    "@eslint/js": "^10.0.1",
-    "@playwright/test": "^1.60.0",
-    "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3",
+    "@eslint/js": "^9.17.0",
+    "@playwright/test": "^1.48.2",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
     "autoprefixer": "10.4.20",
-    "eslint": "^10.4.0",
+    "eslint": "^9.17.0",
     "postcss": "^8.5.15",
     "tailwindcss": "3.4.17",
-    "typescript-eslint": "^8.60.0"
+    "typescript-eslint": "^8.20.0"
   }
 }

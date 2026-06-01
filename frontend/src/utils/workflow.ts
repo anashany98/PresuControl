@@ -105,7 +105,7 @@ export function getOperationalContext(presupuesto: Presupuesto, today = new Date
   }
 
   let prioridad_operativa: OperationalPriority
-  if (urgentPriorities.has(presupuesto.prioridad_calculada) || presupuesto.incidencia || acceptedWithoutOrder || summary.hayPedidosVencidos) {
+  if (urgentPriorities.has(presupuesto.prioridad_calculada || '') || presupuesto.incidencia || acceptedWithoutOrder || summary.hayPedidosVencidos) {
     prioridad_operativa = 'urgente'
   } else if ((todayKey && deadline === todayKey) || presupuesto.prioridad_calculada === 'Naranja') {
     prioridad_operativa = 'hoy'

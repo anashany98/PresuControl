@@ -15,6 +15,17 @@ from .settings import get_settings
 from .serializers import SERIALIZE_FIELDS, serialize
 
 
+REPORT_LIST_TYPES = (
+    "atrasados",
+    "cancelados",
+    "sin_pedido",
+    "sin_aceptacion",
+    "en_riesgo",
+    "pedidos_pendientes",
+    "pedidos_completados",
+)
+
+
 def dashboard_aggregate_metrics(db: Session) -> dict[str, Any]:
     base = base_budget_query(db)
     total = base.count()

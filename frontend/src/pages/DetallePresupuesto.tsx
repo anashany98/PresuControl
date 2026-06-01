@@ -68,10 +68,11 @@ function urlTabToTab(value: string | null): Tab {
 }
 
 function actionToIcon(action: RecommendedActionType) {
-  if (action === 'crear_pedido') return <PackageCheck size={14} />
-  if (action === 'confirmar_plazo') return <Truck size={14} />
-  if (action === 'actualizar_fecha') return <Calendar size={14} />
-  if (action === 'resolver_incidencia') return <ShieldAlert size={14} />
+  const t = action.tipo
+  if (t === 'crear_pedido') return <PackageCheck size={14} />
+  if (t === 'confirmar_plazo') return <Truck size={14} />
+  if (t === 'actualizar_fecha') return <Calendar size={14} />
+  if (t === 'resolver_incidencia') return <ShieldAlert size={14} />
   return <CheckCircle2 size={14} />
 }
 
@@ -367,7 +368,7 @@ function GuidancePanel({
       <div className="guidance-side">
         <PedidoSummaryBadge presupuesto={{ ...data, pedidos }} variant="mini" />
         <button className="btn primary small" onClick={onAction}>
-          {actionToIcon(operational.accion_recomendada.tipo)}
+          {actionToIcon(operational.accion_recomendada)}
           {operational.accion_recomendada.label}
         </button>
       </div>

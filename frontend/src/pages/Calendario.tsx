@@ -976,17 +976,19 @@ evs.map((e, i) => (
 )
 }
 
-function EstadoBadge({ estado }: { estado: string }) {
+function EstadoBadge({ estado }: { estado: unknown }) {
+  const str = String(estado ?? '')
   let cls = 'cal-modal-badge state'
-  if (estado.includes('Aceptado') || estado.includes('Pedido proveedor')) cls += ' accepted'
-  if (estado.includes('Entregado') || estado.includes('Plazo')) cls += ' done'
-  if (estado.includes('Bloqueado') || estado.includes('Cancelado')) cls += ' blocked'
-  return <span className={cls}>{estado}</span>
+  if (str.includes('Aceptado') || str.includes('Pedido proveedor')) cls += ' accepted'
+  if (str.includes('Entregado') || str.includes('Plazo')) cls += ' done'
+  if (str.includes('Bloqueado') || str.includes('Cancelado')) cls += ' blocked'
+  return <span className={cls}>{str}</span>
 }
 
-function PrioridadBadge({ value }: { value?: string }) {
-  const cls = (value || 'Verde').toLowerCase().replace('í', 'i')
-  return <span className={`badge ${cls}`}>{value || 'Verde'}</span>
+function PrioridadBadge({ value }: { value: unknown }) {
+  const str = String(value ?? 'Verde')
+  const cls = str.toLowerCase().replace('í', 'i')
+  return <span className={`badge ${cls}`}>{str}</span>
 }
 
 function InfoRow({ icon: Icon, label, value, badge }: { icon: typeof Clock; label: string; value?: string | null; badge?: React.ReactNode }) {

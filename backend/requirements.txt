@@ -1,17 +1,31 @@
+# Core framework
 fastapi==0.136.1
 starlette==0.49.3
 uvicorn[standard]==0.32.1
+
+# Database
 sqlalchemy==2.0.36
 psycopg2-binary==2.9.10
+alembic==1.14.0
+
+# Validation
 pydantic==2.10.2
 python-multipart==0.0.29
+
+# Data processing
 pandas==2.2.3
 openpyxl==3.1.5
 xlsxwriter==3.2.0
+# python-dateutil: transitive dep of pandas (required by pd.to_datetime). Do not remove.
 python-dateutil==2.9.0.post0
-passlib[bcrypt]==1.7.4
+
+# Auth (bcrypt used directly in app/auth.py, NOT passlib. passlib 1.7.4 + bcrypt 4.x has known compat issues.)
 bcrypt>=4.1.3
 python-jose[cryptography]==3.5.0
-alembic==1.14.0
+
+# Rate limiting
+slowapi==0.1.9
+
+# Tests
 pytest==9.0.3
 httpx==0.27.2

@@ -5,7 +5,7 @@ import logging
 import os
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy import desc, or_
 from sqlalchemy.orm import Session
@@ -17,6 +17,8 @@ from ..auth import (
     hash_password,
     normalize_email,
     verify_password,
+    set_auth_cookie,
+    clear_auth_cookie,
 )
 from ..auth_rate_limit import clear_failed_logins, enforce_login_rate_limit, register_failed_login
 from ..database import get_db
@@ -81,7 +83,7 @@ def _current_db_user(request: Request, db: Session) -> Usuario:
 # ---------------------------------------------------------------------------
 
 @router.post("/auth/register", response_model=TokenOut, status_code=201)
-def register(payload: UserRegister, request: Request, db: Session = Depends(get_db)):
+def register(payload: UserRegister, request: Request, response: Response, db: Session = Depends(get_db)):
     _enforce_registration_rate_limit(request, db)
     email = normalize_email(payload.email)
     exists = db.query(Usuario).filter(Usuario.email == email).first()
@@ -109,25 +111,36 @@ def register(payload: UserRegister, request: Request, db: Session = Depends(get_
         raise HTTPException(status_code=202, detail="Registro recibido. Tu cuenta queda pendiente de aceptacion desde el panel.")
     sync_legacy_system_flag(user)
     token = create_access_token(user.email, {"name": user.nombre, "role": user_role(user)})
+    set_auth_cookie(response, token)
     return {"access_token": token, "token_type": "bearer", "user": user}
 
 
 @router.post("/auth/login", response_model=TokenOut)
-def login(payload: UserLogin, request: Request, db: Session = Depends(get_db)):
+def login(payload: UserLogin, request: Request, response: Response, db: Session = Depends(get_db)):
     email = normalize_email(payload.email)
     enforce_login_rate_limit(email, request, db)
     user = db.query(Usuario).filter(Usuario.email == email).first()
-    if not user or not verify_password(payload.password, user.hashed_password):
+
+    generic_error = HTTPException(status_code=401, detail="Email o contraseña incorrectos.")
+
+    if not user:
         register_failed_login(email, request, db)
-        raise HTTPException(status_code=401, detail="Email o contrasena incorrectos.")
+        raise generic_error
+
+    if not verify_password(payload.password, user.hashed_password):
+        register_failed_login(email, request, db)
+        raise generic_error
+
     if not user.activo or not user.aprobado:
-        raise HTTPException(status_code=403, detail="Cuenta pendiente de aceptacion o desactivada.")
+        raise generic_error
+
     clear_failed_logins(email, request, db)
     user.ultimo_login = datetime.now(timezone.utc)
     db.commit()
     db.refresh(user)
     sync_legacy_system_flag(user)
     token = create_access_token(user.email, {"name": user.nombre, "role": user_role(user)})
+    set_auth_cookie(response, token)
     return {"access_token": token, "token_type": "bearer", "user": user}
 
 
@@ -143,6 +156,12 @@ def me(request: Request, db: Session = Depends(get_db)):
     return JSONResponse(status_code=401, content={"detail": "No autenticado. Haz logout y login de nuevo."})
 
 
+@router.post("/auth/logout")
+def logout(response: Response):
+    clear_auth_cookie(response)
+    return {"ok": True}
+
+
 # ---------------------------------------------------------------------------
 # User management endpoints (admin only)
 # ---------------------------------------------------------------------------
@@ -154,11 +173,24 @@ def list_usuarios(request: Request, db: Session = Depends(get_db)):
     from ..models import Presupuesto
 
     usuarios = db.query(Usuario).order_by(desc(Usuario.creado_en)).all()
+    # Single aggregated query to avoid N+1: count presupuestos by both gestor and responsable_actual
+    from ..models import Presupuesto
+    gestor_counts = dict(
+        db.query(
+            Presupuesto.gestor,
+            func.count(Presupuesto.id)
+        ).group_by(Presupuesto.gestor).all()
+    )
+    responsable_counts = dict(
+        db.query(
+            Presupuesto.responsable_actual,
+            func.count(Presupuesto.id)
+        ).group_by(Presupuesto.responsable_actual).all()
+    )
+
     result = []
     for user in usuarios:
-        count = db.query(func.count(Presupuesto.id)).filter(
-            (Presupuesto.gestor == user.nombre) | (Presupuesto.responsable_actual == user.nombre)
-        ).scalar() or 0
+        count = (gestor_counts.get(user.nombre, 0) + responsable_counts.get(user.nombre, 0))
         user_dict = {
             "id": user.id,
             "nombre": user.nombre,

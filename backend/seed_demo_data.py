@@ -1,9 +1,16 @@
+import os
 import random
 from datetime import date, timedelta
 from alembic import command
 from alembic.config import Config
 from app.database import Base, engine, SessionLocal
 from app.models import Usuario, Presupuesto, Comentario, HistorialCambio
+
+# Demo password for seeded users. Override with DEMO_PASSWORD env var in CI/prod.
+# Default is intentionally weak and only safe in dev environments.
+DEMO_PASSWORD = os.getenv("DEMO_PASSWORD", "demo1234")
+if DEMO_PASSWORD == "demo1234":
+    print("WARNING: using default weak DEMO_PASSWORD. Override with DEMO_PASSWORD env var in non-dev.")
 
 ESTADOS = [
     "Pendiente de enviar",
@@ -56,7 +63,7 @@ for ud in users_data:
         user = Usuario(
             email=ud["email"],
             nombre=ud["nombre"],
-            hashed_password=hash_password("demo1234"),
+            hashed_password=hash_password(DEMO_PASSWORD),
             aprobado=ud["aprobado"],
             puede_gestionar_sistema=ud["puede_gestionar_sistema"],
             activo=True,

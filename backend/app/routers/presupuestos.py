@@ -80,9 +80,4 @@ def update_presupuesto(presupuesto_id: int, payload: PresupuestoUpdate, request:
     return {}
 
 
-@router.delete("/{presupuesto_id}")
-def delete_presupuesto(presupuesto_id: int, request: Request, db: Session = Depends(get_db)):
-    require_gestion_or_admin(request)
-    cache.invalidate("dashboard")
-    cache.invalidate("sidebar")
-    return {"ok": True}
+

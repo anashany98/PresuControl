@@ -42,9 +42,10 @@ function actionHref(item: Presupuesto) {
 }
 
 function actionIcon(action: RecommendedActionType) {
-  if (action === 'crear_pedido') return <PackagePlus size={14} />
-  if (action === 'confirmar_plazo' || action === 'actualizar_fecha') return <Calendar size={14} />
-  if (action === 'resolver_incidencia') return <AlertTriangle size={14} />
+  const t = action.tipo
+  if (t === 'crear_pedido') return <PackagePlus size={14} />
+  if (t === 'confirmar_plazo' || t === 'actualizar_fecha') return <Calendar size={14} />
+  if (t === 'resolver_incidencia') return <AlertTriangle size={14} />
   return <ArrowRight size={14} />
 }
 
@@ -53,7 +54,7 @@ function WorkCard({ item, onGoKanban }: { item: Presupuesto; onGoKanban: (id: nu
   const daysDiff = getDaysDiff(item.fecha_limite_siguiente_accion)
   const isPast = daysDiff < 0 && !isNaN(daysDiff)
   const isToday = daysDiff === 0
-  const barColor = PRIORITY_COLOR[item.prioridad_calculada] || '#d1d5db'
+  const barColor = PRIORITY_COLOR[item.prioridad_calculada ?? ''] || '#d1d5db'
   const action = operational.accion_recomendada
 
   return (
@@ -97,7 +98,7 @@ function WorkCard({ item, onGoKanban }: { item: Presupuesto; onGoKanban: (id: nu
           </div>
           <div className="work-card-actions">
             <Link to={actionHref(item)} className="btn primary small">
-              {actionIcon(action.tipo)}
+              {actionIcon(action)}
               {action.label}
             </Link>
             <button

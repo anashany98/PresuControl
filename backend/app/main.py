@@ -7,7 +7,8 @@ import logging
 import os
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Literal
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -17,10 +18,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
 from sqlalchemy import func, or_, desc, asc, text, case
 from sqlalchemy.orm import Session, selectinload
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from .database import Base, engine, get_db, SessionLocal
 from .models import Comentario, EmailNotificationLog, EvaluacionProveedor, HistorialCambio, LoginAttempt, PedidoProveedor, Presupuesto, PresupuestoProveedor, Proveedor, RegistrationAttempt, Usuario
 from .rules import CLOSED_STATES, apply_derived_fields, calculate_risk, get_pedido_counts, validate_presupuesto
+from .domain.constants import FLOW
 from .schemas import (
     ComentarioCreate,
     ComentarioOut,
@@ -29,6 +33,8 @@ from .schemas import (
     EvaluacionProveedorOut,
     HistorialOut,
     ImportPreview,
+    KanbanBoardOut,
+    KanbanColumnOut,
     PedidoProveedorCreate,
     PedidoProveedorOut,
     PedidoProveedorUpdate,
@@ -44,6 +50,7 @@ from .schemas import (
     SettingsOut,
     SettingsUpdate,
     QuickAction,
+    SearchResult,
     EmailTestPayload,
     ArchivePayload,
     EmailLogOut,
@@ -51,7 +58,8 @@ from .schemas import (
     SidebarCounters,
 )
 from .settings import get_settings, update_settings
-from .config import get_fastapi_docs_config, get_public_paths, validate_runtime_config
+from .sse_manager import sse
+from .config import get_fastapi_docs_config, get_public_paths, is_production, validate_runtime_config
 from .auth import get_authenticated_user_from_request, is_auth_enabled
 from .access_control import ADMIN_ROLE, require_gestion_or_admin, require_system_manager, user_role
 from .analytics import (
@@ -74,6 +82,7 @@ from .notifications_inapp import limpiar_notificaciones_antiguas, obtener_notifi
 from .routers.health import router as health_router
 from .routers.auth import router as auth_router
 from .routers.presupuestos import router as presupuestos_router
+from .routers.presupuestos_full import router as presupuestos_full_router, pedidos_router
 from .routers.dashboard import router as dashboard_router
 from .logging_middleware import StructuredLoggingMiddleware
 from .services.metadata_service import build_metadata_options, distinct_column_values, normalize_option_list, provider_catalog_values
@@ -155,21 +164,40 @@ app.include_router(health_router)
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(auth_router, prefix="/api")
 app.include_router(auth_router)
-app.include_router(presupuestos_router, prefix="/api/v1")
-app.include_router(presupuestos_router, prefix="/api")
+# BUG-10 fix: presupuestos_router (legacy dummy que retorna {}) eliminado.
+# Solo presupuestos_full_router (canónico) maneja /presupuestos con prefijo /api/v1 y /api.
+# Endpoints inline en main.py manejan las rutas en root (/presupuestos, /presupuestos/{id}, etc).
+app.include_router(presupuestos_full_router, prefix="/api/v1")
+app.include_router(presupuestos_full_router, prefix="/api")
 app.include_router(dashboard_router, prefix="/api/v1")
 app.include_router(dashboard_router, prefix="/api")
+app.include_router(pedidos_router, prefix="/api/v1")
+app.include_router(pedidos_router, prefix="/api")
+
+def validate_origin(origin: str, is_prod: bool) -> bool:
+    if not origin:
+        return False
+    if not is_prod and origin.startswith("http://localhost"):
+        return True
+    if is_prod:
+        return bool(re.match(r"^https://[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$", origin))
+    return True
+
 
 origins = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost:3000").split(",")
-origins_stripped = [o.strip() for o in origins if o.strip()]
-if "*" in origins_stripped:  # credentials always enabled
+valid_origins = [o.strip() for o in origins if validate_origin(o.strip(), is_production())]
+
+if not valid_origins:
+    raise RuntimeError("No valid CORS origins configured")
+
+if "*" in valid_origins:
     raise RuntimeError("CORS_ORIGINS contains '*' which is not allowed when allow_credentials=True. Specify explicit origins.")
 # Structured JSON logging (add before CORS for accurate timing)
 app.add_middleware(StructuredLoggingMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins_stripped,
+    allow_origins=valid_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -214,6 +242,9 @@ if os.getenv("RUN_DEFENSIVE_MIGRATIONS", "false").lower() in {"1", "true", "yes"
 
 
 PUBLIC_PATHS = get_public_paths()
+
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
 
 
 @app.middleware("http")
@@ -430,6 +461,7 @@ def apply_filters(
     gestor: str | None = None,
     proveedor: str | None = None,
     incidencia: bool | None = None,
+    etiqueta: str | None = None,
 ):
     if search:
         like = f"%{search.strip()}%"
@@ -453,6 +485,8 @@ def apply_filters(
         query = query.filter(Presupuesto.proveedor == proveedor)
     if incidencia is not None:
         query = query.filter(Presupuesto.incidencia == incidencia)
+    if etiqueta:
+        query = query.filter(Presupuesto.etiquetas.ilike(f"%{etiqueta.strip()}%"))
     return query
 
 def apply_sort(query, sort_by: str | None, sort_dir: str | None):
@@ -487,6 +521,43 @@ if DEBUG_MODE:
 
 # Seed demo endpoint - only available when SEED_DEMO=true
 SEED_DEMO_MODE = os.getenv("SEED_DEMO", "false").lower() in {"1", "true", "yes", "on"}
+
+
+@app.get("/sse/subscribe")
+async def sse_subscribe(request: Request):
+    """Server-Sent Events endpoint for real-time notifications.
+    Authenticated via require_auth_middleware (cookie or Authorization header).
+    """
+    user = get_current_user(request)
+    if not user:
+        return JSONResponse(status_code=401, content={"detail": "Token requerido"})
+
+    queue = await sse.subscribe()
+
+    async def event_stream():
+        try:
+            yield "event: connected\ndata: {}\n\n"
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    data = await asyncio.wait_for(queue.get(), timeout=15.0)
+                    yield f"data: {data}\n\n"
+                except asyncio.TimeoutError:
+                    yield ": keepalive\n\n"
+        finally:
+            await sse.unsubscribe(queue)
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
 
 @app.get("/settings", response_model=SettingsOut)
 def read_settings(request: Request, db: Session = Depends(get_db)):
@@ -531,7 +602,8 @@ def metadata_options(db: Session = Depends(get_db)):
 
 
 @app.get("/metadata/autocomplete")
-def metadata_autocomplete(field: str = Query(...), q: str = Query("", min_length=2), db: Session = Depends(get_db)):
+@limiter.limit("60/minute")
+def metadata_autocomplete(request: Request, field: str = Query(...), q: str = Query("", min_length=2), db: Session = Depends(get_db)):
     """Return matching values for autocomplete fields."""
     allowed = {"cliente": Presupuesto.cliente, "obra_referencia": Presupuesto.obra_referencia, "proveedor": Presupuesto.proveedor}
     if field not in allowed:
@@ -668,6 +740,66 @@ def list_presupuestos_page(
         "importe_total": round(importe_total, 2),
     }
 
+
+@app.get("/presupuestos/kanban", response_model=KanbanBoardOut)
+def kanban_board(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: Usuario | None = Depends(get_current_user),
+    gestor: str | None = None,
+):
+    require_gestion_or_admin(request)
+    if user and user_role(user) != ADMIN_ROLE and not gestor:
+        gestor = user.nombre
+
+    kanban_columns = [s for s in ESTADOS if s != "Pendiente de enviar"]
+    settings = get_settings(db)
+
+    # 1. Single query: all non-archived presupuestos with prefetch
+    all_query = db.query(Presupuesto).options(
+        selectinload(Presupuesto.pedidos),
+    ).filter(Presupuesto.archivado == False)
+
+    if gestor:
+        all_query = all_query.filter(Presupuesto.gestor == gestor)
+
+    all_presupuestos = all_query.all()
+    all_ids = [p.id for p in all_presupuestos]
+
+    # 2. Single batch query for all pedido_counts
+    pedido_counts = get_pedido_counts(db, all_ids)
+
+    # 3. Sort all by priority (in memory, same order as before)
+    prioridad_order_map = {
+        "Crítico": 5, "Rojo": 4, "Naranja": 3, "Amarillo": 2, "Verde": 1,
+    }
+    all_presupuestos.sort(
+        key=lambda p: (
+            prioridad_order_map.get(p.prioridad_calculada, 0),
+            getattr(p, "dias_parado", 0) or 0,
+        ),
+        reverse=True,
+    )
+
+    # 4. Calculate risk with pre-loaded data
+    for p in all_presupuestos:
+        p.prioridad_calculada, p.dias_parado = calculate_risk(
+            p, db, settings, pedido_counts
+        )
+
+    # 5. Filter in Python by column state
+    result: dict[str, dict] = {}
+    for col in kanban_columns:
+        filtered = [p for p in all_presupuestos if p.estado == col]
+        result[col] = {"items": filtered[:8], "total": len(filtered)}
+
+    return {
+        "columns": result,
+        "flow": FLOW,
+        "wip_limits": settings.get("wip_limits", {}),
+    }
+
+
 @app.post("/presupuestos", response_model=PresupuestoOut, status_code=201)
 def create_presupuesto(payload: PresupuestoCreate, request: Request, db: Session = Depends(get_db)):
     require_gestion_or_admin(request)
@@ -706,6 +838,10 @@ def create_presupuesto(payload: PresupuestoCreate, request: Request, db: Session
     db.commit()
     db.refresh(obj)
     send_immediate_alerts_for_budget(db, obj)
+    sse.safe_broadcast("presupuesto_actualizado", {
+        "id": obj.id, "numero": obj.numero_presupuesto,
+        "estado": obj.estado, "cliente": obj.cliente,
+    })
     return obj
 
 @app.get("/presupuestos/{presupuesto_id}", response_model=PresupuestoOut)
@@ -720,7 +856,7 @@ def read_presupuesto(presupuesto_id: int, db: Session = Depends(get_db)):
 @app.patch("/presupuestos/{presupuesto_id}", response_model=PresupuestoOut)
 def update_presupuesto(presupuesto_id: int, payload: PresupuestoUpdate, request: Request, db: Session = Depends(get_db)):
     require_gestion_or_admin(request)
-    obj = db.query(Presupuesto).options(selectinload(Presupuesto.pedidos)).filter(Presupuesto.id == presupuesto_id).first()
+    obj = db.query(Presupuesto).options(selectinload(Presupuesto.pedidos)).filter(Presupuesto.id == presupuesto_id).with_for_update().first()
     if not obj:
         raise HTTPException(status_code=404, detail="Presupuesto no encontrado.")
 
@@ -743,7 +879,7 @@ def update_presupuesto(presupuesto_id: int, payload: PresupuestoUpdate, request:
 
     if obj.estado == "Bloqueado / incidencia":
         obj.incidencia = True
-    validate_presupuesto(obj, db, existing_id=presupuesto_id)
+    validate_presupuesto(obj, db, existing_id=presupuesto_id, previous_estado=before.get("estado"))
     apply_derived_fields(obj, db)
     obj.version = (obj.version or 1) + 1
     db.flush()
@@ -760,10 +896,11 @@ def update_presupuesto(presupuesto_id: int, payload: PresupuestoUpdate, request:
     send_immediate_alerts_for_budget(db, obj)
     return obj
 
+
 @app.post("/presupuestos/{presupuesto_id}/quick-action", response_model=PresupuestoOut)
 def quick_action(presupuesto_id: int, payload: QuickAction, request: Request, db: Session = Depends(get_db)):
     require_gestion_or_admin(request)
-    obj = db.get(Presupuesto, presupuesto_id)
+    obj = db.query(Presupuesto).filter(Presupuesto.id == presupuesto_id).with_for_update().first()
     if not obj:
         raise HTTPException(status_code=404, detail="Presupuesto no encontrado.")
     check_expected_version(obj, payload.expected_version)
@@ -836,7 +973,7 @@ def quick_action(presupuesto_id: int, payload: QuickAction, request: Request, db
     else:
         raise HTTPException(status_code=422, detail="Acción rápida no válida.")
 
-    validate_presupuesto(obj, db, existing_id=presupuesto_id)
+    validate_presupuesto(obj, db, existing_id=presupuesto_id, previous_estado=before.get("estado"))
     apply_derived_fields(obj, db)
     obj.version = (obj.version or 1) + 1
     db.flush()
@@ -848,6 +985,10 @@ def quick_action(presupuesto_id: int, payload: QuickAction, request: Request, db
     db.commit()
     db.refresh(obj)
     send_immediate_alerts_for_budget(db, obj)
+    sse.safe_broadcast("presupuesto_actualizado", {
+        "id": obj.id, "numero": obj.numero_presupuesto,
+        "estado": obj.estado, "cliente": obj.cliente,
+    })
     return obj
 
 
@@ -1311,8 +1452,10 @@ def sidebar_counters(request: Request, db: Session = Depends(get_db)):
     return counters
 
 
-@app.get("/search")
+@app.get("/search", response_model=SearchResult)
+@limiter.limit("60/minute")
 def global_search(
+    request: Request,
     db: Session = Depends(get_db),
     q: str = Query(..., min_length=2),
     page: int = Query(1, ge=1),
@@ -1502,6 +1645,7 @@ def riesgo(request: Request, db: Session = Depends(get_db)):
 
 @app.get("/hoy")
 def hoy(request: Request, db: Session = Depends(get_db)):
+    require_gestion_or_admin(request)
     rows = get_today_rows(db)
     user = getattr(request.state, "user", None)
     if user and user_role(user) != ADMIN_ROLE:
@@ -1511,6 +1655,7 @@ def hoy(request: Request, db: Session = Depends(get_db)):
 
 @app.get("/aceptados-sin-pedido")
 def aceptados_sin_pedido(request: Request, db: Session = Depends(get_db)):
+    require_gestion_or_admin(request)
     rows = get_accepted_without_order_rows(db)
     user = getattr(request.state, "user", None)
     if user and user_role(user) != ADMIN_ROLE:
@@ -1891,7 +2036,10 @@ def parse_upload(file: UploadFile) -> pd.DataFrame:
     if len(raw) > MAX_IMPORT_FILE_SIZE:
         raise HTTPException(status_code=400, detail="Archivo demasiado grande. Máximo 10MB.")
     if ext == ".csv":
-        return pd.read_csv(io.BytesIO(raw))
+        try:
+            return pd.read_csv(io.BytesIO(raw), encoding="utf-8")
+        except UnicodeDecodeError:
+            return pd.read_csv(io.BytesIO(raw), encoding="latin-1")
     if ext in {".xlsx", ".xls"}:
         return pd.read_excel(io.BytesIO(raw))
     raise HTTPException(status_code=400, detail="Formato no soportado. Usa CSV, XLSX o XLS.")
@@ -1941,9 +2089,14 @@ def row_to_payload(row: pd.Series) -> dict[str, Any]:
     def clean_identifier(value: Any) -> str:
         if value is None:
             return ""
-        if isinstance(value, float) and value == int(value):
-            return str(int(value)).strip()
-        return str(value).strip()
+        try:
+            if isinstance(value, float):
+                if value != value or value == float('inf') or value == float('-inf'):
+                    return ""
+                return str(int(value)).strip()
+            return str(value).strip()
+        except (ValueError, OverflowError):
+            return ""
 
     def clean(v):
         if pd.isna(v):
@@ -2076,7 +2229,10 @@ def import_preview(request: Request, file: UploadFile = File(...), db: Session =
     require_system_manager(request)
     if mode not in {"create_only", "update_existing", "upsert"}:
         raise HTTPException(status_code=422, detail="Modo de importación no válido.")
-    mapping = json.loads(column_mapping) if column_mapping and column_mapping != "{}" else None
+    try:
+        mapping = json.loads(column_mapping) if column_mapping and column_mapping != "{}" else None
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=422, detail="column_mapping no es JSON válido")
     raw_df = parse_upload(file)
     columnas_originales = [str(c) for c in raw_df.columns.tolist()]
     mapeo_auto = {str(c): COLUMN_ALIASES.get(str(c).strip(), str(c).strip()) for c in raw_df.columns}
@@ -2100,7 +2256,13 @@ def import_preview(request: Request, file: UploadFile = File(...), db: Session =
     prepared_rows, errores = prepare_import_payloads(df)
     nums = [str(data["numero_presupuesto"]).strip() for _, _, data in prepared_rows]
     seen = set()
-    dup_file = sorted({n for n in nums if n in seen or seen.add(n)})
+    dup_file = []
+    for n in nums:
+        if n in seen:
+            dup_file.append(n)
+        else:
+            seen.add(n)
+    dup_file = sorted(dup_file)
     existing_rows = db.query(Presupuesto).filter(Presupuesto.numero_presupuesto.in_(nums)).all()
     existing = {r.numero_presupuesto: r for r in existing_rows}
     preview = []
@@ -2164,7 +2326,10 @@ def import_confirm(request: Request, file: UploadFile = File(...), db: Session =
     require_system_manager(request)
     if mode not in {"create_only", "update_existing", "upsert"}:
         raise HTTPException(status_code=422, detail="Modo de importación no válido.")
-    mapping = json.loads(column_mapping) if column_mapping and column_mapping != "{}" else None
+    try:
+        mapping = json.loads(column_mapping) if column_mapping and column_mapping != "{}" else None
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=422, detail="column_mapping no es JSON válido")
     raw_df = parse_upload(file)
     try:
         df = normalize_import_df(raw_df, column_mapping=mapping)
@@ -2189,6 +2354,7 @@ def import_confirm(request: Request, file: UploadFile = File(...), db: Session =
     ]
     seen = set()
     actor = current_actor(request)
+    # Validate ALL rows before any database modifications
     for idx, row, data in prepared_rows:
         try:
             num = str(data["numero_presupuesto"]).strip()
@@ -2205,6 +2371,23 @@ def import_confirm(request: Request, file: UploadFile = File(...), db: Session =
                 if expected is None or pd.isna(expected) or int(expected) != int(obj.version):
                     skipped.append({"fila": int(idx) + 2, "numero_presupuesto": num, "motivo": "Versión no indicada o antigua"})
                     continue
+            else:
+                if mode == "update_existing":
+                    skipped.append({"fila": int(idx) + 2, "numero_presupuesto": num, "motivo": "No existe para actualizar"})
+                    continue
+                obj = Presupuesto(**data)
+                validate_presupuesto(obj, db)
+        except Exception as e:
+            skipped.append({"fila": int(idx) + 2, "numero_presupuesto": str(row.get("numero_presupuesto", "")), "motivo": str(getattr(e, "detail", e))})
+    if skipped:
+        db.rollback()
+        return {"insertados": 0, "actualizados": 0, "omitidos": skipped}
+    # All valid: apply changes atomically
+    with db.begin():
+        for idx, row, data in prepared_rows:
+            num = str(data["numero_presupuesto"]).strip()
+            obj = existing.get(num)
+            if obj:
                 before = serialize(obj)
                 for field, value in data.items():
                     if field == "numero_presupuesto":
@@ -2221,9 +2404,6 @@ def import_confirm(request: Request, file: UploadFile = File(...), db: Session =
                     add_history(db, obj.id, field, old_value, after[field], actor=actor)
                 updated += 1
             else:
-                if mode == "update_existing":
-                    skipped.append({"fila": int(idx) + 2, "numero_presupuesto": num, "motivo": "No existe para actualizar"})
-                    continue
                 obj = Presupuesto(**data)
                 validate_presupuesto(obj, db)
                 apply_derived_fields(obj, db)
@@ -2240,9 +2420,6 @@ def import_confirm(request: Request, file: UploadFile = File(...), db: Session =
                     usuario_email=actor.get("usuario_email"),
                 ))
                 inserted += 1
-        except Exception as e:
-            skipped.append({"fila": int(idx) + 2, "numero_presupuesto": str(row.get("numero_presupuesto", "")), "motivo": str(getattr(e, "detail", e))})
-    db.commit()
     cache.invalidate("dashboard")
     cache.invalidate("sidebar")
     return {"insertados": inserted, "actualizados": updated, "omitidos": skipped}
@@ -2346,7 +2523,8 @@ def delete_proveedor(proveedor_id: int, request: Request, db: Session = Depends(
 
 
 @app.get("/proveedores/{proveedor_id}/evaluaciones", response_model=list[EvaluacionProveedorOut])
-def list_evaluaciones_proveedor(proveedor_id: int, db: Session = Depends(get_db)):
+def list_evaluaciones_proveedor(proveedor_id: int, request: Request, db: Session = Depends(get_db)):
+    require_gestion_or_admin(request)
     proveedor = db.get(Proveedor, proveedor_id)
     if not proveedor:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado.")
