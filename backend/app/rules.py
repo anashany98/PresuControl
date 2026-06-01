@@ -3,7 +3,7 @@ from datetime import date, datetime, timedelta, timezone
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
-from .schemas import ESTADOS
+from .schemas import ACCEPTED_STATES, CLOSED_STATES, ESTADOS, FLOW
 from .settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -46,27 +46,6 @@ def all_pedidos_completados(db: Session, presupuesto_id: int) -> bool:
     ).count()
     return count == 0
 
-
-CLOSED_STATES = {"Entregado / cerrado", "Cancelado / rechazado"}
-ACCEPTED_STATES = {
-    "Aceptado - pendiente pedido proveedor",
-    "Pedido proveedor realizado",
-    "Plazo proveedor confirmado",
-    "En preparación / fabricación",
-    "Entregado / cerrado",
-}
-
-FLOW = {
-    "Pendiente de enviar": ["Enviado al cliente", "Cancelado / rechazado", "Bloqueado / incidencia"],
-    "Enviado al cliente": ["Aceptado - pendiente pedido proveedor", "Cancelado / rechazado", "Bloqueado / incidencia"],
-    "Aceptado - pendiente pedido proveedor": ["Pedido proveedor realizado", "Cancelado / rechazado", "Bloqueado / incidencia"],
-    "Pedido proveedor realizado": ["Plazo proveedor confirmado", "Bloqueado / incidencia"],
-    "Plazo proveedor confirmado": ["En preparación / fabricación", "Bloqueado / incidencia"],
-    "En preparación / fabricación": ["Entregado / cerrado", "Bloqueado / incidencia"],
-    "Bloqueado / incidencia": ESTADOS,
-    "Cancelado / rechazado": ESTADOS,
-    "Entregado / cerrado": ESTADOS,
-}
 
 def days_between(start: date | None, end: date | None = None) -> int:
     if not start:

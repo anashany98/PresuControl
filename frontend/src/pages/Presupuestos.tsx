@@ -5,12 +5,11 @@ import { PageHeader } from '../components/PageHeader'
 import { PriorityBadge, StateBadge } from '../components/Badges'
 import { SkeletonTable } from '../components/Skeleton'
 import { OptionInput } from '../components/OptionInput'
-import { ESTADOS, api, euro, exportUrl, fmtDate, getAuthToken, API_URL, type PaginatedPresupuestos, type Presupuesto } from '../utils/api'
+import { ESTADOS, PRIORIDADES, api, euro, exportUrl, fmtDate, getAuthToken, API_URL, type PaginatedPresupuestos, type Presupuesto } from '../utils/api'
 import { useData } from '../utils/useData'
 import { useMetadataOptions } from '../utils/useMetadataOptions'
 import { PedidoSummaryBadge } from '../components/PedidoSummary'
 
-const PRIORIDADES = ['Verde','Amarillo','Naranja','Rojo','Crítico']
 const defaultColumns = ['numero','cliente','gestor','estado','importe','pedido','accion','prioridad','ultima']
 const quickFilters = [
   { key: 'mis_urgentes', label: 'Mis urgentes' },

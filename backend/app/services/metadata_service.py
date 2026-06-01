@@ -7,6 +7,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from ..models import PedidoProveedor, Presupuesto, Proveedor
+from ..schemas import ESTADOS, PRIORIDADES
 from ..settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -55,4 +56,9 @@ def build_metadata_options(db: Session) -> dict[str, list[str]]:
         *distinct_column_values(db, PedidoProveedor.proveedor),
         *provider_catalog_values(db),
     ])
-    return {"gestores": gestores, "proveedores": proveedores}
+    return {
+        "gestores": gestores,
+        "proveedores": proveedores,
+        "estados": list(ESTADOS),
+        "prioridades": list(PRIORIDADES),
+    }

@@ -3,6 +3,7 @@ import { AlertCircle, AlertTriangle, Calendar, CheckCircle2, Clock3, Download, F
 import { Link } from 'react-router-dom'
 import { api, ESTADOS, euro } from '../utils/api'
 import { ESTADO_COLOR } from '../utils/tokens'
+import { useMetadataOptions } from '../utils/useMetadataOptions'
 import { isSystemAdmin, useAuth } from '../utils/auth'
 import { useData } from '../utils/useData'
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from 'recharts'
@@ -34,6 +35,7 @@ export function Dashboard() {
   const { data, loading, error } = useData<DashboardPayload>(() => api.get('/dashboard'), [])
 
   const execData = useData<ExecPayload>(() => api.get('/dashboard/ejecutivo'), [view])
+  const metadata = useMetadataOptions()
 
   if (loading) return <DashboardSkeleton />
   if (error || !data) return <div className="error p-4">{error || 'No se pudo cargar el dashboard'}</div>
@@ -42,7 +44,10 @@ export function Dashboard() {
   const allPresupuestos = Object.values(data.sections).flat()
   const uniquePresupuestos = allPresupuestos.filter((p, i, a) => a.findIndex(x => x.id === p.id) === i)
 
-  const estadoCounts = ESTADOS.map(e => ({
+  // Live canonical list from /metadata/options; hook falls back to ESTADOS
+  // until the API responds (A-01 single source of truth).
+  const estados = metadata.estados && metadata.estados.length > 0 ? metadata.estados : ESTADOS
+  const estadoCounts = estados.map(e => ({
     estado: e.split(' - ')[0],
     count: uniquePresupuestos.filter(p => p.estado === e).length,
     color: ESTADO_COLOR[e] || '#e5e7eb',

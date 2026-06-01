@@ -1,8 +1,9 @@
-// Single source of truth for estado values. MUST match backend/app/schemas.py:5-16.
-// Drift between this list and the backend caused the production Kanban to show
-// zero data (Kanban.tsx queries by these exact strings; mismatched values returned
-// empty results from the API). Validated on the backend by schemas.PresupuestoBase
-// @field_validator("estado") (schemas.py:59-62).
+// BOOT-TIME FALLBACK. The canonical source of truth is `backend/app/schemas.py`
+// (consolidated in A-01). The frontend hook `useMetadataOptions()` fetches the
+// same list at runtime from `/api/v1/metadata/options` and overrides this on
+// load. These constants exist only so the UI renders the first paint before
+// the metadata call returns (or if the call fails). Drift here was the cause
+// of the production Kanban showing zero data (bug af71529).
 export const ESTADOS = [
   'Borrador',
   'Pendiente de enviar',
@@ -16,6 +17,17 @@ export const ESTADOS = [
   'Bloqueado / incidencia',
 ] as const
 export type Estado = typeof ESTADOS[number]
+
+// Same story as ESTADOS: boot-time fallback mirrored from
+// `backend/app/schemas.py:PRIORIDADES`.
+export const PRIORIDADES = [
+  'Verde',
+  'Amarillo',
+  'Naranja',
+  'Rojo',
+  'Crítico',
+] as const
+export type Prioridad = typeof PRIORIDADES[number]
 
 export const API_URL = import.meta.env.VITE_API_URL || '/api/v1'
 export const AUTH_TOKEN_KEY = 'presucontrol_token'
@@ -352,6 +364,7 @@ export type Presupuesto = {
   fecha_pedido_proveedor?: string | null
   plazo_proveedor?: string | null
   fecha_prevista_entrega?: string | null
+  fecha_estimacion_termino?: string | null
   fecha_entrega_cliente?: string | null
   fecha_recepcion_mercancia?: string | null
   plazo_confeccion?: string | null
