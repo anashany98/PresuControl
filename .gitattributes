@@ -1,0 +1,24 @@
+# Force LF line endings for shell scripts (CRLF breaks #!/bin/sh shebang on Linux)
+*.sh        text eol=lf
+*.bash      text eol=lf
+
+# Python files: keep LF (consistent with PEP 263 + cross-platform Docker)
+*.py        text eol=lf
+*.pyi       text eol=lf
+
+# Dockerfiles and YAML config: LF required by Docker/k8s
+Dockerfile* text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+
+# Configs and docs
+*.env       text eol=lf
+*.example   text eol=lf
+*.md        text eol=lf
+*.json      text eol=lf
+*.toml      text eol=lf
+
+# Windows-specific: keep CRLF for these
+*.bat       text eol=crlf
+*.cmd       text eol=crlf
+*.ps1       text eol=crlf
