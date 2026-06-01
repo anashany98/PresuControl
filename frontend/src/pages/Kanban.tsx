@@ -10,7 +10,7 @@ import { PedidoSummaryPanel } from '../components/PedidoSummaryPanel'
 import { Modal } from '../components/Modal'
 import { KanbanCard } from '../components/KanbanCard'
 
-const columns: string[] = ESTADOS.filter(s => s !== 'Pendiente de enviar')
+const columns: string[] = ESTADOS.filter(s => s !== 'Pendiente de enviar' && s !== 'Borrador')
 
 type KanbanPayload = {
   action: string
