@@ -113,6 +113,16 @@ Incluye pruebas para:
 - bloqueo por versión antigua;
 - rate limit de login.
 
+## CI
+
+Los workflows de GitHub Actions se ejecutan en cada push a `main` y `codex/*`, y en cada PR contra `main`.
+
+Ver runs en:
+
+```text
+https://github.com/<owner>/presucontrol_v5_app/actions
+```
+
 ## Importación Excel/CSV
 
 Modos disponibles:
@@ -275,3 +285,14 @@ GET  /logs/actividad/export
 GET  /reports/list?type=atrasados
 POST /reports/export-list
 ```
+
+## E2E Tests
+
+Kanban end-to-end tests using Playwright verify the two critical bugs fixed in the current cycle.
+
+```bash
+cd frontend
+npm run test:e2e
+```
+
+Tests live in `frontend/tests/e2e/kanban.spec.ts`. See `frontend/tests/e2e/README.md` for prerequisites and configuration.
