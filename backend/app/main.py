@@ -164,8 +164,9 @@ app.include_router(health_router)
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(auth_router, prefix="/api")
 app.include_router(auth_router)
-app.include_router(presupuestos_router, prefix="/api/v1")
-app.include_router(presupuestos_router, prefix="/api")
+# BUG-10 fix: presupuestos_router (legacy dummy que retorna {}) eliminado.
+# Solo presupuestos_full_router (canónico) maneja /presupuestos con prefijo /api/v1 y /api.
+# Endpoints inline en main.py manejan las rutas en root (/presupuestos, /presupuestos/{id}, etc).
 app.include_router(presupuestos_full_router, prefix="/api/v1")
 app.include_router(presupuestos_full_router, prefix="/api")
 app.include_router(dashboard_router, prefix="/api/v1")
@@ -855,7 +856,7 @@ def read_presupuesto(presupuesto_id: int, db: Session = Depends(get_db)):
 @app.patch("/presupuestos/{presupuesto_id}", response_model=PresupuestoOut)
 def update_presupuesto(presupuesto_id: int, payload: PresupuestoUpdate, request: Request, db: Session = Depends(get_db)):
     require_gestion_or_admin(request)
-    obj = db.query(Presupuesto).options(selectinload(Presupuesto.pedidos)).filter(Presupuesto.id == presupuesto_id).first()
+    obj = db.query(Presupuesto).options(selectinload(Presupuesto.pedidos)).filter(Presupuesto.id == presupuesto_id).with_for_update().first()
     if not obj:
         raise HTTPException(status_code=404, detail="Presupuesto no encontrado.")
 
@@ -895,10 +896,11 @@ def update_presupuesto(presupuesto_id: int, payload: PresupuestoUpdate, request:
     send_immediate_alerts_for_budget(db, obj)
     return obj
 
+
 @app.post("/presupuestos/{presupuesto_id}/quick-action", response_model=PresupuestoOut)
 def quick_action(presupuesto_id: int, payload: QuickAction, request: Request, db: Session = Depends(get_db)):
     require_gestion_or_admin(request)
-    obj = db.get(Presupuesto, presupuesto_id)
+    obj = db.query(Presupuesto).filter(Presupuesto.id == presupuesto_id).with_for_update().first()
     if not obj:
         raise HTTPException(status_code=404, detail="Presupuesto no encontrado.")
     check_expected_version(obj, payload.expected_version)
@@ -1643,6 +1645,7 @@ def riesgo(request: Request, db: Session = Depends(get_db)):
 
 @app.get("/hoy")
 def hoy(request: Request, db: Session = Depends(get_db)):
+    require_gestion_or_admin(request)
     rows = get_today_rows(db)
     user = getattr(request.state, "user", None)
     if user and user_role(user) != ADMIN_ROLE:
@@ -1652,6 +1655,7 @@ def hoy(request: Request, db: Session = Depends(get_db)):
 
 @app.get("/aceptados-sin-pedido")
 def aceptados_sin_pedido(request: Request, db: Session = Depends(get_db)):
+    require_gestion_or_admin(request)
     rows = get_accepted_without_order_rows(db)
     user = getattr(request.state, "user", None)
     if user and user_role(user) != ADMIN_ROLE:
@@ -2032,7 +2036,10 @@ def parse_upload(file: UploadFile) -> pd.DataFrame:
     if len(raw) > MAX_IMPORT_FILE_SIZE:
         raise HTTPException(status_code=400, detail="Archivo demasiado grande. Máximo 10MB.")
     if ext == ".csv":
-        return pd.read_csv(io.BytesIO(raw))
+        try:
+            return pd.read_csv(io.BytesIO(raw), encoding="utf-8")
+        except UnicodeDecodeError:
+            return pd.read_csv(io.BytesIO(raw), encoding="latin-1")
     if ext in {".xlsx", ".xls"}:
         return pd.read_excel(io.BytesIO(raw))
     raise HTTPException(status_code=400, detail="Formato no soportado. Usa CSV, XLSX o XLS.")
@@ -2082,9 +2089,14 @@ def row_to_payload(row: pd.Series) -> dict[str, Any]:
     def clean_identifier(value: Any) -> str:
         if value is None:
             return ""
-        if isinstance(value, float) and value == int(value):
-            return str(int(value)).strip()
-        return str(value).strip()
+        try:
+            if isinstance(value, float):
+                if value != value or value == float('inf') or value == float('-inf'):
+                    return ""
+                return str(int(value)).strip()
+            return str(value).strip()
+        except (ValueError, OverflowError):
+            return ""
 
     def clean(v):
         if pd.isna(v):
@@ -2217,7 +2229,10 @@ def import_preview(request: Request, file: UploadFile = File(...), db: Session =
     require_system_manager(request)
     if mode not in {"create_only", "update_existing", "upsert"}:
         raise HTTPException(status_code=422, detail="Modo de importación no válido.")
-    mapping = json.loads(column_mapping) if column_mapping and column_mapping != "{}" else None
+    try:
+        mapping = json.loads(column_mapping) if column_mapping and column_mapping != "{}" else None
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=422, detail="column_mapping no es JSON válido")
     raw_df = parse_upload(file)
     columnas_originales = [str(c) for c in raw_df.columns.tolist()]
     mapeo_auto = {str(c): COLUMN_ALIASES.get(str(c).strip(), str(c).strip()) for c in raw_df.columns}
@@ -2305,7 +2320,10 @@ def import_confirm(request: Request, file: UploadFile = File(...), db: Session =
     require_system_manager(request)
     if mode not in {"create_only", "update_existing", "upsert"}:
         raise HTTPException(status_code=422, detail="Modo de importación no válido.")
-    mapping = json.loads(column_mapping) if column_mapping and column_mapping != "{}" else None
+    try:
+        mapping = json.loads(column_mapping) if column_mapping and column_mapping != "{}" else None
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=422, detail="column_mapping no es JSON válido")
     raw_df = parse_upload(file)
     try:
         df = normalize_import_df(raw_df, column_mapping=mapping)
@@ -2330,6 +2348,7 @@ def import_confirm(request: Request, file: UploadFile = File(...), db: Session =
     ]
     seen = set()
     actor = current_actor(request)
+    # Validate ALL rows before any database modifications
     for idx, row, data in prepared_rows:
         try:
             num = str(data["numero_presupuesto"]).strip()
@@ -2346,6 +2365,23 @@ def import_confirm(request: Request, file: UploadFile = File(...), db: Session =
                 if expected is None or pd.isna(expected) or int(expected) != int(obj.version):
                     skipped.append({"fila": int(idx) + 2, "numero_presupuesto": num, "motivo": "Versión no indicada o antigua"})
                     continue
+            else:
+                if mode == "update_existing":
+                    skipped.append({"fila": int(idx) + 2, "numero_presupuesto": num, "motivo": "No existe para actualizar"})
+                    continue
+                obj = Presupuesto(**data)
+                validate_presupuesto(obj, db)
+        except Exception as e:
+            skipped.append({"fila": int(idx) + 2, "numero_presupuesto": str(row.get("numero_presupuesto", "")), "motivo": str(getattr(e, "detail", e))})
+    if skipped:
+        db.rollback()
+        return {"insertados": 0, "actualizados": 0, "omitidos": skipped}
+    # All valid: apply changes atomically
+    with db.begin():
+        for idx, row, data in prepared_rows:
+            num = str(data["numero_presupuesto"]).strip()
+            obj = existing.get(num)
+            if obj:
                 before = serialize(obj)
                 for field, value in data.items():
                     if field == "numero_presupuesto":
@@ -2362,9 +2398,6 @@ def import_confirm(request: Request, file: UploadFile = File(...), db: Session =
                     add_history(db, obj.id, field, old_value, after[field], actor=actor)
                 updated += 1
             else:
-                if mode == "update_existing":
-                    skipped.append({"fila": int(idx) + 2, "numero_presupuesto": num, "motivo": "No existe para actualizar"})
-                    continue
                 obj = Presupuesto(**data)
                 validate_presupuesto(obj, db)
                 apply_derived_fields(obj, db)
@@ -2381,9 +2414,6 @@ def import_confirm(request: Request, file: UploadFile = File(...), db: Session =
                     usuario_email=actor.get("usuario_email"),
                 ))
                 inserted += 1
-        except Exception as e:
-            skipped.append({"fila": int(idx) + 2, "numero_presupuesto": str(row.get("numero_presupuesto", "")), "motivo": str(getattr(e, "detail", e))})
-    db.commit()
     cache.invalidate("dashboard")
     cache.invalidate("sidebar")
     return {"insertados": inserted, "actualizados": updated, "omitidos": skipped}
@@ -2487,7 +2517,8 @@ def delete_proveedor(proveedor_id: int, request: Request, db: Session = Depends(
 
 
 @app.get("/proveedores/{proveedor_id}/evaluaciones", response_model=list[EvaluacionProveedorOut])
-def list_evaluaciones_proveedor(proveedor_id: int, db: Session = Depends(get_db)):
+def list_evaluaciones_proveedor(proveedor_id: int, request: Request, db: Session = Depends(get_db)):
+    require_gestion_or_admin(request)
     proveedor = db.get(Proveedor, proveedor_id)
     if not proveedor:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado.")

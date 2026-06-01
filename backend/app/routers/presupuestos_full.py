@@ -289,7 +289,7 @@ def read_presupuesto(presupuesto_id: int, db: Session = Depends(get_db)):
 @router.patch("/{presupuesto_id}", response_model=PresupuestoOut)
 def update_presupuesto(presupuesto_id: int, payload: PresupuestoUpdate, request: Request, db: Session = Depends(get_db)):
     require_gestion_or_admin(request)
-    obj = db.query(Presupuesto).options(selectinload(Presupuesto.pedidos)).filter(Presupuesto.id == presupuesto_id).first()
+    obj = db.query(Presupuesto).options(selectinload(Presupuesto.pedidos)).filter(Presupuesto.id == presupuesto_id).with_for_update().first()
     if not obj:
         raise HTTPException(status_code=404, detail="Presupuesto no encontrado.")
 
