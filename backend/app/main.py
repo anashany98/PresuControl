@@ -23,8 +23,7 @@ from slowapi.util import get_remote_address
 
 from .database import Base, engine, get_db, SessionLocal
 from .models import Comentario, EmailNotificationLog, EvaluacionProveedor, HistorialCambio, LoginAttempt, PedidoProveedor, Presupuesto, PresupuestoProveedor, Proveedor, RegistrationAttempt, Usuario
-from .rules import CLOSED_STATES, apply_derived_fields, calculate_risk, get_pedido_counts, validate_presupuesto
-from .domain.constants import FLOW
+from .rules import CLOSED_STATES, FLOW, apply_derived_fields, calculate_risk, get_pedido_counts, validate_presupuesto
 from .schemas import (
     ComentarioCreate,
     ComentarioOut,

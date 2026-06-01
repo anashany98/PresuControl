@@ -3,6 +3,7 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import { PageHeader } from '../components/PageHeader'
 import { SkeletonCard } from '../components/Skeleton'
 import { api, ESTADOS, euro, fmtDate, isoDate, type Presupuesto } from '../utils/api'
+import { useMetadataOptions } from '../utils/useMetadataOptions'
 import { useAuth } from '../utils/auth'
 import { useSearchParams } from 'react-router-dom'
 import { useToast } from '../utils/toast'
@@ -10,7 +11,10 @@ import { PedidoSummaryPanel } from '../components/PedidoSummaryPanel'
 import { Modal } from '../components/Modal'
 import { KanbanCard } from '../components/KanbanCard'
 
-const columns: string[] = ESTADOS.filter(s => s !== 'Pendiente de enviar' && s !== 'Borrador')
+// Boot-time fallback. Live value comes from useMetadataOptions().estados
+// (A-01). The hook always returns the fallback while `/metadata/options`
+// is loading, so columns are never empty.
+const FALLBACK_COLUMNS: string[] = ESTADOS.filter(s => s !== 'Pendiente de enviar' && s !== 'Borrador')
 
 type KanbanPayload = {
   action: string
@@ -150,6 +154,15 @@ export function Kanban() {
   const [saving, setSaving] = useState(false)
   const toast = useToast()
   const focusId = Number(params.get('focus') || 0) || null
+  const metadata = useMetadataOptions()
+
+  // Live columns. The hook falls back to the boot-time ESTADOS filter
+  // until `/metadata/options` resolves, so the board is never empty.
+  const columns = useMemo(
+    () => (metadata.estados && metadata.estados.length > 0 ? metadata.estados : ESTADOS)
+      .filter(s => s !== 'Pendiente de enviar' && s !== 'Borrador'),
+    [metadata.estados]
+  )
 
   const [columnData, setColumnData] = useState<Record<string, Presupuesto[]>>({})
   const [columnTotals, setColumnTotals] = useState<Record<string, number>>({})
@@ -188,7 +201,7 @@ export function Kanban() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [columns])
 
   useEffect(() => { loadColumns() }, [loadColumns])
 

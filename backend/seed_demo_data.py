@@ -5,24 +5,13 @@ from alembic import command
 from alembic.config import Config
 from app.database import Base, engine, SessionLocal
 from app.models import Usuario, Presupuesto, Comentario, HistorialCambio
+from app.schemas import ESTADOS
 
 # Demo password for seeded users. Override with DEMO_PASSWORD env var in CI/prod.
 # Default is intentionally weak and only safe in dev environments.
 DEMO_PASSWORD = os.getenv("DEMO_PASSWORD", "demo1234")
 if DEMO_PASSWORD == "demo1234":
     print("WARNING: using default weak DEMO_PASSWORD. Override with DEMO_PASSWORD env var in non-dev.")
-
-ESTADOS = [
-    "Pendiente de enviar",
-    "Enviado al cliente",
-    "Aceptado - pendiente pedido proveedor",
-    "Pedido proveedor realizado",
-    "Plazo proveedor confirmado",
-    "En preparación / fabricación",
-    "Entregado / cerrado",
-    "Cancelado / rechazado",
-    "Bloqueado / incidencia",
-]
 
 GESTORES = ["María García", "Carlos Rodríguez", "Ana Martínez", "Pedro Sánchez", "Laura López"]
 PROVEEDORES = ["Suministros Pérez S.L.", "Materiales López", "Ferretería Central", "Distribuciones García", "Herramientas Díaz"]

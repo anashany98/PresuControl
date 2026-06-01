@@ -1,33 +1,7 @@
-ESTADOS = [
-    "Pendiente de enviar",
-    "Enviado al cliente",
-    "Aceptado - pendiente pedido proveedor",
-    "Pedido proveedor realizado",
-    "Plazo proveedor confirmado",
-    "En preparación / fabricación",
-    "Entregado / cerrado",
-    "Cancelado / rechazado",
-    "Bloqueado / incidencia",
-]
+# Deprecation notice:
+# This module is a compatibility shim. Constants have been consolidated into
+# backend/app/schemas.py as the single source of truth. Please update imports
+# to use app.schemas or app.rules directly.
+from ..rules import ACCEPTED_STATES, CLOSED_STATES, ESTADOS, FLOW
 
-CLOSED_STATES = {"Entregado / cerrado", "Cancelado / rechazado"}
-
-FLOW = {
-    "Pendiente de enviar": ["Enviado al cliente", "Cancelado / rechazado", "Bloqueado / incidencia"],
-    "Enviado al cliente": ["Aceptado - pendiente pedido proveedor", "Cancelado / rechazado", "Bloqueado / incidencia"],
-    "Aceptado - pendiente pedido proveedor": ["Pedido proveedor realizado", "Cancelado / rechazado", "Bloqueado / incidencia"],
-    "Pedido proveedor realizado": ["Plazo proveedor confirmado", "Bloqueado / incidencia"],
-    "Plazo proveedor confirmado": ["En preparación / fabricación", "Bloqueado / incidencia"],
-    "En preparación / fabricación": ["Entregado / cerrado", "Bloqueado / incidencia"],
-    "Bloqueado / incidencia": ESTADOS,
-    "Cancelado / rechazado": ESTADOS,
-    "Entregado / cerrado": ESTADOS,
-}
-
-ACCEPTED_STATES = {
-    "Aceptado - pendiente pedido proveedor",
-    "Pedido proveedor realizado",
-    "Plazo proveedor confirmado",
-    "En preparación / fabricación",
-    "Entregado / cerrado",
-}
+__all__ = ["ESTADOS", "CLOSED_STATES", "ACCEPTED_STATES", "FLOW"]

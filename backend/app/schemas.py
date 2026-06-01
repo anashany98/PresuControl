@@ -17,6 +17,27 @@ ESTADOS = [
 ESTADO_ENTREGA_OPTIONS = ["pendiente", "parcial", "completado"]
 PRIORIDADES = ["Verde", "Amarillo", "Naranja", "Rojo", "Crítico"]
 
+CLOSED_STATES = {"Entregado / cerrado", "Cancelado / rechazado"}
+ACCEPTED_STATES = {
+    "Aceptado - pendiente pedido proveedor",
+    "Pedido proveedor realizado",
+    "Plazo proveedor confirmado",
+    "En preparación / fabricación",
+    "Entregado / cerrado",
+}
+
+FLOW = {
+    "Pendiente de enviar": ["Enviado al cliente", "Cancelado / rechazado", "Bloqueado / incidencia"],
+    "Enviado al cliente": ["Aceptado - pendiente pedido proveedor", "Cancelado / rechazado", "Bloqueado / incidencia"],
+    "Aceptado - pendiente pedido proveedor": ["Pedido proveedor realizado", "Cancelado / rechazado", "Bloqueado / incidencia"],
+    "Pedido proveedor realizado": ["Plazo proveedor confirmado", "Bloqueado / incidencia"],
+    "Plazo proveedor confirmado": ["En preparación / fabricación", "Bloqueado / incidencia"],
+    "En preparación / fabricación": ["Entregado / cerrado", "Bloqueado / incidencia"],
+    "Bloqueado / incidencia": ESTADOS,
+    "Cancelado / rechazado": ESTADOS,
+    "Entregado / cerrado": ESTADOS,
+}
+
 
 def _validate_choice(value: str | None, choices: list[str], field_name: str) -> str | None:
     if value is not None and value not in choices:
