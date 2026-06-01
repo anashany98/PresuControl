@@ -1,9 +1,19 @@
+// Single source of truth for estado values. MUST match backend/app/schemas.py:5-16.
+// Drift between this list and the backend caused the production Kanban to show
+// zero data (Kanban.tsx queries by these exact strings; mismatched values returned
+// empty results from the API). Validated on the backend by schemas.PresupuestoBase
+// @field_validator("estado") (schemas.py:59-62).
 export const ESTADOS = [
+  'Borrador',
   'Pendiente de enviar',
-  'Enviado sin respuesta',
-  'Aceptado con pedido',
-  'Aceptado sin pedido',
-  'Rechazado / cancelado',
+  'Enviado al cliente',
+  'Aceptado - pendiente pedido proveedor',
+  'Pedido proveedor realizado',
+  'Plazo proveedor confirmado',
+  'En preparación / fabricación',
+  'Entregado / cerrado',
+  'Cancelado / rechazado',
+  'Bloqueado / incidencia',
 ] as const
 export type Estado = typeof ESTADOS[number]
 
