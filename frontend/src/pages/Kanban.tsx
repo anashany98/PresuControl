@@ -28,6 +28,7 @@ type KanbanPayload = {
   fecha_pedido_proveedor?: string
   plazo_proveedor?: string
   fecha_prevista_entrega?: string
+  fecha_estimacion_termino?: string
   responsable_actual?: string
   siguiente_accion?: string
   fecha_limite_siguiente_accion?: string
@@ -261,8 +262,8 @@ export function Kanban() {
     setSavingId(presupuestoId)
     const dateFields: (keyof KanbanPayload)[] = [
       'fecha_envio_cliente', 'fecha_aceptacion', 'fecha_pedido_proveedor',
-      'plazo_proveedor', 'fecha_prevista_entrega', 'fecha_limite_siguiente_accion',
-      'fecha_cancelacion_rechazo'
+      'plazo_proveedor', 'fecha_prevista_entrega', 'fecha_estimacion_termino',
+      'fecha_limite_siguiente_accion', 'fecha_cancelacion_rechazo'
     ]
     const cleaned = { ...payload }
     for (const f of dateFields) {
@@ -272,6 +273,8 @@ export function Kanban() {
       if (cleaned.action === 'direct_status') {
         if (target.status === 'Pedido proveedor realizado') {
           await api.post(`/presupuestos/${presupuestoId}/quick-action`, { action: 'crear_pedido_proveedor', expected_version: prevVersion, proveedor: cleaned.proveedor, numero_pedido_proveedor: cleaned.numero_pedido_proveedor, fecha_pedido_proveedor: cleaned.fecha_pedido_proveedor || new Date().toISOString().slice(0, 10) })
+        } else if (target.status === 'En preparación / fabricación') {
+          await api.patch(`/presupuestos/${presupuestoId}`, { estado: target.status, expected_version: prevVersion, fecha_estimacion_termino: cleaned.fecha_estimacion_termino })
         } else {
           await api.patch(`/presupuestos/${presupuestoId}`, { estado: target.status, expected_version: prevVersion })
         }
@@ -491,6 +494,7 @@ function KanbanModal({ presupuesto, status, onClose, onSubmit, saving }: { presu
     fecha_pedido_proveedor: isoDate(presupuesto.fecha_pedido_proveedor) || new Date().toISOString().slice(0, 10),
     plazo_proveedor: isoDate(presupuesto.plazo_proveedor),
     fecha_prevista_entrega: isoDate(presupuesto.fecha_prevista_entrega),
+    fecha_estimacion_termino: isoDate(presupuesto.fecha_estimacion_termino),
     responsable_actual: user?.nombre || presupuesto.responsable_actual || '',
     siguiente_accion: presupuesto.siguiente_accion || '',
     fecha_limite_siguiente_accion: isoDate(presupuesto.fecha_limite_siguiente_accion) || new Date().toISOString().slice(0, 10),
@@ -509,7 +513,8 @@ function KanbanModal({ presupuesto, status, onClose, onSubmit, saving }: { presu
         {status === 'Plazo proveedor confirmado' && <><Field label="Plazo proveedor"><input className="input" type="date" value={payload.plazo_proveedor || ''} onChange={e => set('plazo_proveedor', e.target.value)} /></Field><Field label="Fecha prevista entrega"><input className="input" type="date" value={payload.fecha_prevista_entrega || ''} onChange={e => set('fecha_prevista_entrega', e.target.value)} /></Field></>}
         {status === 'Bloqueado / incidencia' && <><Field label="Responsable"><input className="input" value={payload.responsable_actual || ''} onChange={e => set('responsable_actual', e.target.value)} /></Field><Field label="Descripción incidencia"><textarea rows={4} value={payload.descripcion_incidencia || ''} onChange={e => set('descripcion_incidencia', e.target.value)} /></Field></>}
         {status === 'Cancelado / rechazado' && <><Field label="Fecha cancelación"><input className="input" type="date" value={payload.fecha_cancelacion_rechazo || ''} onChange={e => set('fecha_cancelacion_rechazo', e.target.value)} /></Field><Field label="Motivo cancelación"><textarea rows={4} value={payload.motivo_cancelacion_rechazo || ''} onChange={e => set('motivo_cancelacion_rechazo', e.target.value)} /></Field></>}
-        {['En preparación / fabricación','Entregado / cerrado'].includes(status) && <p className="muted">No requiere datos adicionales, pero el backend aplicará las validaciones de cierre y versión.</p>}
+        {status === 'En preparación / fabricación' && <><Field label="Fecha estimada de terminación"><input className="input" type="date" value={payload.fecha_estimacion_termino || ''} onChange={e => set('fecha_estimacion_termino', e.target.value)} /></Field><p className="muted">El backend aplicará las validaciones de versión al guardar el movimiento.</p></>}
+        {status === 'Entregado / cerrado' && <p className="muted">No requiere datos adicionales, pero el backend aplicará las validaciones de cierre y versión.</p>}
       </div>
       <div className="modal-actions"><button className="btn secondary" onClick={onClose}>Cancelar</button><button className="btn" disabled={saving} onClick={() => onSubmit(payload)}>{saving ? 'Guardando...' : 'Guardar movimiento'}</button></div>
     </Modal>

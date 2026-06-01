@@ -352,6 +352,7 @@ export type Presupuesto = {
   fecha_pedido_proveedor?: string | null
   plazo_proveedor?: string | null
   fecha_prevista_entrega?: string | null
+  fecha_estimacion_termino?: string | null
   fecha_entrega_cliente?: string | null
   fecha_recepcion_mercancia?: string | null
   plazo_confeccion?: string | null

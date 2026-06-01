@@ -43,6 +43,7 @@ class Presupuesto(Base):
     fecha_pedido_proveedor: Mapped[Date | None] = mapped_column(Date, nullable=True)
     plazo_proveedor: Mapped[Date | None] = mapped_column(Date, nullable=True)
     fecha_prevista_entrega: Mapped[Date | None] = mapped_column(Date, nullable=True)
+    fecha_estimacion_termino: Mapped[Date | None] = mapped_column(Date, nullable=True)
     responsable_actual: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
     siguiente_accion: Mapped[str | None] = mapped_column(String(255), nullable=True)
     fecha_limite_siguiente_accion: Mapped[Date | None] = mapped_column(Date, nullable=True)

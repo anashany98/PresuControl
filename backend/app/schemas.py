@@ -45,6 +45,7 @@ class PresupuestoBase(BaseModel):
     fecha_pedido_proveedor: date | None = None
     plazo_proveedor: date | None = None
     fecha_prevista_entrega: date | None = None
+    fecha_estimacion_termino: date | None = None
     responsable_actual: str | None = None
     siguiente_accion: str | None = None
     fecha_limite_siguiente_accion: date | None = None
