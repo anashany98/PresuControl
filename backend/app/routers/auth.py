@@ -173,11 +173,24 @@ def list_usuarios(request: Request, db: Session = Depends(get_db)):
     from ..models import Presupuesto
 
     usuarios = db.query(Usuario).order_by(desc(Usuario.creado_en)).all()
+    # Single aggregated query to avoid N+1: count presupuestos by both gestor and responsable_actual
+    from ..models import Presupuesto
+    gestor_counts = dict(
+        db.query(
+            Presupuesto.gestor,
+            func.count(Presupuesto.id)
+        ).group_by(Presupuesto.gestor).all()
+    )
+    responsable_counts = dict(
+        db.query(
+            Presupuesto.responsable_actual,
+            func.count(Presupuesto.id)
+        ).group_by(Presupuesto.responsable_actual).all()
+    )
+
     result = []
     for user in usuarios:
-        count = db.query(func.count(Presupuesto.id)).filter(
-            (Presupuesto.gestor == user.nombre) | (Presupuesto.responsable_actual == user.nombre)
-        ).scalar() or 0
+        count = (gestor_counts.get(user.nombre, 0) + responsable_counts.get(user.nombre, 0))
         user_dict = {
             "id": user.id,
             "nombre": user.nombre,

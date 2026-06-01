@@ -1,8 +1,12 @@
-from datetime import date, datetime, timezone
+import logging
+from datetime import date, datetime, timedelta, timezone
+
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from .schemas import ESTADOS
 from .settings import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 def has_pedidos(db: Session, presupuesto_id: int) -> bool:
@@ -125,6 +129,16 @@ def validate_presupuesto(obj, db: Session, existing_id: int | None = None, previ
     if obj.fecha_envio_cliente and obj.fecha_presupuesto and obj.fecha_envio_cliente < obj.fecha_presupuesto:
         errors.append("La fecha de envío al cliente no puede ser anterior a la fecha del presupuesto.")
 
+    if obj.fecha_presupuesto is not None:
+        five_years_ago = date.today() - timedelta(days=365 * 5)
+        if obj.fecha_presupuesto < five_years_ago:
+            logger.warning(
+                "Presupuesto %s tiene fecha_presupuesto muy antigua (%s) — más de 5 años.",
+                getattr(obj, "numero_presupuesto", "?"),
+                obj.fecha_presupuesto,
+            )
+            warnings.append(f"Advertencia: la fecha del presupuesto es anterior a {five_years_ago.year}. Verifica que sea correcta.")
+
     if obj.fecha_aceptacion and obj.fecha_envio_cliente and obj.fecha_aceptacion < obj.fecha_envio_cliente:
         errors.append("La fecha de aceptación no puede ser anterior a la fecha de envío al cliente.")
 
@@ -188,5 +202,24 @@ def apply_derived_fields(obj, db: Session):
     obj.fecha_ultima_actualizacion = datetime.now(timezone.utc)
     if obj.estado == "Pedido proveedor realizado":
         obj.pedido_proveedor_realizado = True
+
+    # BUG-23: cross-validate pedido_proveedor_realizado column against actual pedidos relationship.
+    # The column is denormalized and can drift from reality. Defensive check: if the relationship
+    # says something different, log a warning but do NOT auto-correct (changing behavior would be
+    # riskier than leaving it as-is until a proper property is implemented).
+    if getattr(obj, "pedidos", None) is not None:
+        has_pedidos_flag = len(obj.pedidos) > 0
+        all_completados = all(p.estado_entrega == "completado" for p in obj.pedidos) if obj.pedidos else True
+        if obj.pedido_proveedor_realizado and not has_pedidos_flag:
+            logger.warning(
+                "Presupuesto %s: pedido_proveedor_realizado=True but no pedidos in relationship",
+                getattr(obj, "id", "?")
+            )
+        if not obj.pedido_proveedor_realizado and has_pedidos_flag and all_completados:
+            logger.warning(
+                "Presupuesto %s: pedido_proveedor_realizado=False but all pedidos are completed",
+                getattr(obj, "id", "?")
+            )
+
     if obj.incidencia and obj.estado not in {"Bloqueado / incidencia", "Cancelado / rechazado", "Entregado / cerrado"}:
         pass

@@ -74,29 +74,45 @@ export function Layout() {
   const { user } = useAuth()
   const toast = useToast()
 
-  // SSE: notificaciones en tiempo real
+  // SSE: notificaciones en tiempo real con reconexión automática
   // Cookie is sent automatically with same-origin requests (EventSource uses GET,
   // which sends cookies automatically for same-origin). No manual token needed.
   useEffect(() => {
     if (!user) return
 
-    const es = new EventSource("/api/sse/subscribe")
+    let eventSource: EventSource | null = null
+    let retryDelay = 1000 // start at 1s
+    const MAX_DELAY = 30000 // cap at 30s
 
-    es.addEventListener('presupuesto_actualizado', (e) => {
-      try {
-        const d = JSON.parse((e as MessageEvent).data)
-        toast.show(`${d.data.numero} → ${d.data.estado.split(' - ')[0]}`, 'info', {
-          label: 'Ver',
-          onClick: () => navigate(`/presupuestos/${d.data.id}`),
-        })
-      } catch { /* ignore */ }
-    })
+    const connect = () => {
+      eventSource = new EventSource("/api/sse/subscribe")
 
-    es.onerror = () => {
-      es.close()
+      eventSource.addEventListener('presupuesto_actualizado', (e) => {
+        try {
+          const d = JSON.parse((e as MessageEvent).data)
+          toast.show(`${d.data.numero} → ${d.data.estado.split(' - ')[0]}`, 'info', {
+            label: 'Ver',
+            onClick: () => navigate(`/presupuestos/${d.data.id}`),
+          })
+        } catch { /* ignore */ }
+      })
+
+      eventSource.onerror = () => {
+        eventSource?.close()
+        setTimeout(connect, retryDelay)
+        retryDelay = Math.min(retryDelay * 2, MAX_DELAY)
+      }
+
+      eventSource.onopen = () => {
+        retryDelay = 1000 // reset on successful connection
+      }
     }
 
-    return () => es.close()
+    connect()
+
+    return () => {
+      eventSource?.close()
+    }
   }, [user?.id])
   const { open: kbOpen, setOpen: setKbOpen } = useKeyboardShortcuts()
 

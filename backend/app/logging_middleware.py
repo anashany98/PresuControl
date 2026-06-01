@@ -30,13 +30,15 @@ class StructuredLoggingMiddleware(BaseHTTPMiddleware):
         user_email = getattr(getattr(request.state, "user", None), "email", None)
 
         response: Response | None = None
+        exc: Exception | None = None
         status_code = 500
         try:
             response = await call_next(request)
             status_code = response.status_code
             return response
-        except Exception:
-            status_code = 500
+        except Exception as e:
+            exc = e
+            status_code = getattr(e, "status_code", 500)
             raise
         finally:
             elapsed_ms = round((time.monotonic() - start) * 1000, 2)
@@ -50,4 +52,7 @@ class StructuredLoggingMiddleware(BaseHTTPMiddleware):
                 "client_ip": request.client.host if request.client else None,
             }
             level = logging.WARNING if status_code >= 400 else logging.INFO
-            logger.log(level, json.dumps(log_entry, default=str))
+            if exc is not None:
+                logger.exception(json.dumps(log_entry, default=str))
+            else:
+                logger.log(level, json.dumps(log_entry, default=str))

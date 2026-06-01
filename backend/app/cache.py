@@ -1,3 +1,13 @@
+"""
+In-memory cache for presupuesto counters and other lightweight data.
+
+WARNING: This cache is per-process. When running with multiple uvicorn/gunicorn
+workers (e.g., --workers N), each worker maintains its own cache instance,
+so stale data is guaranteed across workers. For single-worker deployments
+(workers=1) the cache works correctly.
+
+If multi-worker deployment is needed, replace with Redis-based caching.
+"""
 from __future__ import annotations
 
 import time

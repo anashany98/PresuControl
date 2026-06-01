@@ -40,7 +40,7 @@ class PresupuestoService:
             raise ValueError("Presupuesto no encontrado")
         return obj
 
-    def create(self, data: PresupuestoCreate, usuario_id: int, current_user=None) -> dict:
+    def create(self, data: PresupuestoCreate, usuario_id: int, current_user=None) -> Presupuesto:
         data_dict = data.model_dump(exclude={"modificado_por"})
         for k, v in data_dict.items():
             if isinstance(v, str):
@@ -78,9 +78,9 @@ class PresupuestoService:
         ))
         self.db.commit()
         self.db.refresh(obj)
-        return serialize(obj)
+        return obj
 
-    def update(self, presupuesto_id: int, data: PresupuestoUpdate, usuario_id: int, current_user=None) -> dict:
+    def update(self, presupuesto_id: int, data: PresupuestoUpdate, usuario_id: int, current_user=None) -> Presupuesto:
         obj = self.db.query(Presupuesto).filter(Presupuesto.id == presupuesto_id).first()
         if not obj:
             raise ValueError("Presupuesto no encontrado")
@@ -111,7 +111,7 @@ class PresupuestoService:
         obj.version = (obj.version or 1) + 1
         self.db.commit()
         self.db.refresh(obj)
-        return serialize(obj)
+        return obj
 
     def delete(self, presupuesto_id: int):
         obj = self.get(presupuesto_id)

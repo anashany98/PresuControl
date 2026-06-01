@@ -2256,7 +2256,13 @@ def import_preview(request: Request, file: UploadFile = File(...), db: Session =
     prepared_rows, errores = prepare_import_payloads(df)
     nums = [str(data["numero_presupuesto"]).strip() for _, _, data in prepared_rows]
     seen = set()
-    dup_file = sorted({n for n in nums if n in seen or seen.add(n)})
+    dup_file = []
+    for n in nums:
+        if n in seen:
+            dup_file.append(n)
+        else:
+            seen.add(n)
+    dup_file = sorted(dup_file)
     existing_rows = db.query(Presupuesto).filter(Presupuesto.numero_presupuesto.in_(nums)).all()
     existing = {r.numero_presupuesto: r for r in existing_rows}
     preview = []
