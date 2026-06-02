@@ -18,6 +18,7 @@ backup/
 ├── Dockerfile       # alpine + postgresql16-client + dcron + openssl
 ├── backup.sh        # the actual pg_dump + rotate + encrypt
 ├── entrypoint.sh    # installs the crontab and execs crond in foreground
+├── healthcheck.sh   # Docker HEALTHCHECK: crond alive + recent heartbeat
 └── crontab          # template; BACKUP_SCHEDULE is substituted at runtime
 ```
 
@@ -29,6 +30,7 @@ backup/
 | `BACKUP_DIR` | `/backups` | Where dumps land (mounted volume) |
 | `BACKUP_RETENTION_DAYS` | `30` | Days to keep on disk |
 | `BACKUP_ENCRYPTION_PASSWORD` | _(empty)_ | If set, dumps are AES-256 encrypted |
+| `BACKUP_HEALTHCHECK_MAX_AGE` | `90000` | Max age (in seconds) of last successful backup before Docker marks the sidecar unhealthy. Default 25h = 1h slack on top of the 24h schedule |
 | `PGHOST` | `postgres` | Set automatically by Compose |
 | `PGPORT` | `5432` | |
 | `POSTGRES_DB` | `presucontrol` | |
@@ -61,6 +63,32 @@ a backup without waiting for the cron tick:
 ```bash
 docker exec -u backup presucontrol-backup /opt/backup/backup.sh
 ```
+
+## Health and alerts
+
+The sidecar carries a Docker `HEALTHCHECK` that runs every 6h and verifies
+that (a) `crond` is alive, (b) `/backups/.last_backup_at` exists, and (c) the
+heartbeat is younger than `BACKUP_HEALTHCHECK_MAX_AGE` (default 25h).
+
+`docker inspect` shows the state:
+
+```bash
+docker inspect --format '{{.State.Health.Status}}' presucontrol-backup
+# healthy | unhealthy | starting
+```
+
+If the sidecar flips to `unhealthy`, the most likely causes are:
+
+1. **`crond` crashed** — `docker exec presucontrol-backup ps -ef` to check,
+   `docker logs presucontrol-backup` for the entrypoint's diagnostic line.
+2. **`pg_dump` is failing** — same logs will show the error; the heartbeat
+   stays at the last successful run, so the age check will eventually flag
+   it.
+3. **The postgres container is unreachable** — restart order: postgres first
+   (it has the healthcheck the backup sidecar `depends_on`).
+
+The `start_period` of 24h gives the first scheduled run time to complete
+before the healthcheck counts.
 
 ## Restoring
 

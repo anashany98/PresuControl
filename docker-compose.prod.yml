@@ -111,6 +111,7 @@ services:
       BACKUP_SCHEDULE: ${BACKUP_SCHEDULE:-0 3 * * *}
       BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
       BACKUP_ENCRYPTION_PASSWORD: ${BACKUP_ENCRYPTION_PASSWORD:-}
+      BACKUP_HEALTHCHECK_MAX_AGE: ${BACKUP_HEALTHCHECK_MAX_AGE:-90000}
       TZ: ${APP_TIMEZONE:-Europe/Madrid}
     volumes:
       - presucontrol_backups:/backups
@@ -118,14 +119,15 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      # Healthy = crond is running AND a backup file exists in the volume.
-      # (We can't check the age of the last backup here without state — the
-      # `.last_backup_at` heartbeat is checked by the host-level script
-      # scripts/backup.sh via docker exec for now.)
-      test: ["CMD-SHELL", "pgrep -x crond >/dev/null"]
-      interval: 60s
-      timeout: 5s
-      retries: 3
+      # Healthy = crond is running AND a recent backup exists in the volume.
+      # See backup/healthcheck.sh for the full logic. The threshold defaults
+      # to 25h (90000s) — enough slack for the default daily schedule plus
+      # 1h of cron drift. Override with BACKUP_HEALTHCHECK_MAX_AGE.
+      test: ["CMD", "/opt/backup/healthcheck.sh"]
+      interval: 6h
+      timeout: 10s
+      retries: 2
+      start_period: 24h
     deploy:
       resources:
         limits:

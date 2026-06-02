@@ -230,6 +230,16 @@ automáticamente a las **03:00 cada día** (configurable con
 `BACKUP_SCHEDULE`). Los dumps aterrizan en el volumen `presucontrol_backups`
 y se conservan 30 días. Ver `backup/README.md` para los detalles.
 
+El sidecar lleva un healthcheck Docker que verifica cada 6h que:
+
+1. `crond` está corriendo dentro del contenedor.
+2. El archivo heartbeat `/backups/.last_backup_at` existe.
+3. La edad del último backup es menor que `BACKUP_HEALTHCHECK_MAX_AGE`
+   (default 25h — 1h de margen sobre la ventana de 24h).
+
+Si el sidecar queda en estado `unhealthy`, revisa `docker logs presucontrol-backup`
+y `docker exec presucontrol-backup crontab -l`.
+
 Inspeccionar backups desde el host:
 
 ```bash

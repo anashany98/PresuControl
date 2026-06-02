@@ -37,9 +37,10 @@ WORKDIR /opt/backup
 
 COPY backup.sh        /opt/backup/backup.sh
 COPY entrypoint.sh    /opt/backup/entrypoint.sh
+COPY healthcheck.sh   /opt/backup/healthcheck.sh
 COPY crontab          /opt/backup/crontab
 
-RUN chmod +x /opt/backup/backup.sh /opt/backup/entrypoint.sh \
+RUN chmod +x /opt/backup/backup.sh /opt/backup/entrypoint.sh /opt/backup/healthcheck.sh \
     && mkdir -p /backups \
     && chown -R backup:backup /opt/backup /backups
 
