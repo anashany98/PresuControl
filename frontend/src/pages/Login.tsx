@@ -1,29 +1,64 @@
-import { type FormEvent, type ReactNode, useState } from 'react'
+import { type ReactNode } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
 import { Gauge, Loader2, LogIn } from 'lucide-react'
 import { isSystemAdmin, useAuth } from '../utils/auth'
+import { loginSchema, type LoginFormData } from '../utils/formSchemas'
 
 export function Login() {
   const { user, login } = useAuth()
   const navigate = useNavigate()
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [showPw, setShowPw] = useState(false)
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+    setError,
+  } = useForm<LoginFormData>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: { email: '', password: '' },
+  })
+
   if (user) return <Navigate to={isSystemAdmin(user) ? '/' : '/mi-trabajo'} replace />
-  async function submit(e: FormEvent) {
-    e.preventDefault(); setError(null); setLoading(true)
-    try { await login(email, password); navigate('/') }
-    catch (err) { setError(err instanceof Error ? err.message : String(err)) }
-    finally { setLoading(false) }
+
+  async function onSubmit(data: LoginFormData) {
+    try {
+      await login(data.email, data.password)
+      navigate('/')
+    } catch (err) {
+      setError('root', { message: err instanceof Error ? err.message : String(err) })
+    }
   }
+
   return <AuthShell title="Entrar en PresuControl" subtitle="Control interno de presupuestos aceptados y pedidos proveedor.">
-    <form onSubmit={submit} className="auth-form">
-      {error && <div className="error">{error}</div>}
-      <label>Email<input className="input" type="email" value={email} onChange={e => setEmail(e.target.value)} required /></label>
-      <label>Contraseña<input className="input" type={showPw ? "text" : "password"} aria-label="Contraseña" value={password} onChange={e => setPassword(e.target.value)} required /></label>
-      <button className="btn" type="submit" disabled={loading}>{loading ? <><Loader2 size={16} className="spin" /> Entrando...</> : <><LogIn size={16} /> Entrar</>}</button>
+    <form onSubmit={handleSubmit(onSubmit)} className="auth-form" noValidate>
+      {errors.root && <div className="error">{errors.root.message}</div>}
+      <label>
+        Email
+        <input
+          className="input"
+          type="email"
+          autoComplete="email"
+          {...register('email')}
+        />
+        {errors.email && <span className="field-error">{errors.email.message}</span>}
+      </label>
+      <label>
+        Contraseña
+        <input
+          className="input"
+          type="password"
+          autoComplete="current-password"
+          aria-label="Contraseña"
+          {...register('password')}
+        />
+        {errors.password && <span className="field-error">{errors.password.message}</span>}
+      </label>
+      <button className="btn" type="submit" disabled={isSubmitting}>
+        {isSubmitting
+          ? <><Loader2 size={16} className="spin" /> Entrando...</>
+          : <><LogIn size={16} /> Entrar</>}
+      </button>
       <p className="muted">¿No tienes cuenta? <Link to="/registro"><strong>Crear registro</strong></Link></p>
     </form>
   </AuthShell>
