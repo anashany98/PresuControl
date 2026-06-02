@@ -1,5 +1,6 @@
-import { useState, type ReactNode } from 'react'
+import { useState, useCallback, type ReactNode } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Archive, ArrowLeft, Calendar, CheckCircle2, MessageSquarePlus, Package, PackageCheck, Pencil, Plus, RefreshCw, Send, ShieldAlert, Trash2, Truck, Users, XCircle } from 'lucide-react'
 import { PageHeader } from '../components/PageHeader'
 import { PresupuestoForm } from '../components/PresupuestoForm'
@@ -8,7 +9,7 @@ import { PriorityBadge, StateBadge } from '../components/Badges'
 import { SkeletonCard } from '../components/Skeleton'
 import { api, fmtDate, isoDate, euro, type Presupuesto, type PedidoProveedor, type RecommendedActionType } from '../utils/api'
 import { useAuth } from '../utils/auth'
-import { useData } from '../utils/useData'
+import { usePresupuesto, usePedidos, queryKeys } from '../utils/useQueries'
 import { ProveedorList } from '../components/ProveedorList'
 import { useToast } from '../utils/toast'
 import { PedidoSummaryBadge } from '../components/PedidoSummary'
@@ -78,11 +79,21 @@ function actionToIcon(action: RecommendedActionType) {
 
 export function DetallePresupuesto() {
   const { id } = useParams()
+  const presupuestoId = Number(id)
   const [searchParams] = useSearchParams()
-  const { data, loading, error, reload, setData } = useData<Presupuesto>(() => api.get(`/presupuestos/${id}`), [id])
-  const comments = useData<Comentario[]>(() => api.get(`/presupuestos/${id}/comentarios`), [id])
-  const history = useData<Historial[]>(() => api.get(`/presupuestos/${id}/historial`), [id])
-  const pedidos = useData<PedidoProveedor[]>(() => api.get(`/presupuestos/${id}/pedidos`), [id])
+  const queryClient = useQueryClient()
+  const { data, isLoading, error, refetch } = usePresupuesto(presupuestoId)
+  const comments = useQuery<Comentario[]>({
+    queryKey: ['presupuesto', presupuestoId, 'comentarios'],
+    queryFn: () => api.get<Comentario[]>(`/presupuestos/${presupuestoId}/comentarios`),
+    enabled: presupuestoId > 0,
+  })
+  const history = useQuery<Historial[]>({
+    queryKey: ['presupuesto', presupuestoId, 'historial'],
+    queryFn: () => api.get<Historial[]>(`/presupuestos/${presupuestoId}/historial`),
+    enabled: presupuestoId > 0,
+  })
+  const pedidos = usePedidos(presupuestoId)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [comment, setComment] = useState('')
   const [commentName, setCommentName] = useState('')
@@ -95,8 +106,31 @@ export function DetallePresupuesto() {
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null)
   const toast = useToast()
 
-  if (loading) return <SkeletonCard />
-  if (error || !data) return <div className="error">{error || 'No encontrado'}</div>
+  const reload = useCallback(() => {
+    refetch()
+    queryClient.invalidateQueries({ queryKey: ['presupuesto', presupuestoId, 'comentarios'] })
+    queryClient.invalidateQueries({ queryKey: ['presupuesto', presupuestoId, 'historial'] })
+    queryClient.invalidateQueries({ queryKey: queryKeys.pedidos.byPresupuesto(presupuestoId) })
+  }, [refetch, queryClient, presupuestoId])
+
+  // Local optimistic setter for the presupuesto — writes through to the cache
+  // so any consumer of usePresupuesto(id) sees the same data.
+  const setData = useCallback((updated: Presupuesto | ((prev: Presupuesto | undefined) => Presupuesto | undefined)) => {
+    queryClient.setQueryData<Presupuesto>(queryKeys.presupuestos.detail(presupuestoId), (prev) => {
+      if (typeof updated === 'function') return (updated as (p: Presupuesto | undefined) => Presupuesto | undefined)(prev)
+      return updated
+    })
+  }, [queryClient, presupuestoId])
+
+  // Re-fetch comments / history / pedidos without touching the main presupuesto.
+  const refreshSidebar = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['presupuesto', presupuestoId, 'comentarios'] })
+    queryClient.invalidateQueries({ queryKey: ['presupuesto', presupuestoId, 'historial'] })
+    queryClient.invalidateQueries({ queryKey: queryKeys.pedidos.byPresupuesto(presupuestoId) })
+  }, [queryClient, presupuestoId])
+
+  if (isLoading) return <SkeletonCard />
+  if (error || !data) return <div className="error">{(error as Error)?.message || 'No encontrado'}</div>
 
   const availableActions = ACTIONS_BY_ESTADO[data.estado] || []
 
@@ -108,7 +142,7 @@ export function DetallePresupuesto() {
       const cleaned = { ...data }
       for (const f of dateFields) { if ((cleaned as any)[f] === '') (cleaned as any)[f] = null }
       const updated = await api.patch<Presupuesto>(`/presupuestos/${id}`, { ...cleaned, expected_version: cleaned.version })
-      setData(updated); reload(); history.reload()
+      setData(updated); reload(); refreshSidebar()
       toast.success('Presupuesto guardado')
     } catch (e) { setSaveError(e instanceof Error ? e.message : String(e)) }
   }
@@ -116,7 +150,7 @@ export function DetallePresupuesto() {
     if (!comment.trim()) return
     await api.post(`/presupuestos/${id}/comentarios`, { comentario: comment, nombre_opcional: commentName || null })
     setComment(''); setCommentName('')
-    comments.reload(); history.reload()
+    refreshSidebar()
   }
   async function runQuick(payload: QuickPayload) {
     if (!data) return
@@ -126,7 +160,7 @@ export function DetallePresupuesto() {
       const cleaned = { ...payload }
       for (const f of dateFields) { if ((cleaned as any)[f] === '') (cleaned as any)[f] = null }
       const updated = await api.post<Presupuesto>(`/presupuestos/${id}/quick-action`, { ...cleaned, expected_version: data.version })
-      setData(updated); setQuickAction(null); reload(); history.reload(); pedidos.reload()
+      setData(updated); setQuickAction(null); reload(); refreshSidebar()
       toast.success('Acción aplicada')
     } catch (e) { setSaveError(e instanceof Error ? e.message : String(e)) }
   }
@@ -135,7 +169,7 @@ export function DetallePresupuesto() {
     if (!archiveReason.trim()) { setSaveError('Indica el motivo de archivado.'); return }
     try {
       await api.post(`/presupuestos/${id}/archivar`, { motivo_archivado: archiveReason, expected_version: data.version })
-      setShowArchive(false); history.reload(); reload()
+      setShowArchive(false); refreshSidebar(); reload()
       toast.success('Archivado')
     } catch (e) { setSaveError(e instanceof Error ? e.message : String(e)) }
   }
@@ -144,12 +178,12 @@ export function DetallePresupuesto() {
       if (editingPedido) { await api.updatePedido(editingPedido.id, payload); toast.success('Pedido actualizado') }
       else { await api.createPedido(Number(id), payload); toast.success('Pedido creado') }
       setEditingPedido(null); setShowPedidoForm(false)
-      pedidos.reload(); history.reload()
+      refreshSidebar()
     } catch (e) { toast.error(e instanceof Error ? e.message : String(e)) }
   }
   async function deletePedido(pedidoId: number) {
     if (deleteConfirm !== pedidoId) { setDeleteConfirm(pedidoId); return }
-    try { await api.deletePedido(pedidoId); pedidos.reload(); history.reload(); setDeleteConfirm(null); toast.success('Pedido eliminado') }
+    try { await api.deletePedido(pedidoId);       refreshSidebar(); setDeleteConfirm(null); toast.success('Pedido eliminado') }
     catch (e) { toast.error(e instanceof Error ? e.message : String(e)) }
   }
 
