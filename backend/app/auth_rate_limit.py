@@ -31,12 +31,12 @@
 from __future__ import annotations
 
 import ipaddress
-import os
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, Request
 from sqlalchemy.orm import Session
 
+from .config import settings
 from .models import LoginAttempt
 
 
@@ -53,7 +53,7 @@ def _get_real_ip(request: Request) -> tuple[str, bool]:
       - If request.client.host is NOT trusted, X-Forwarded-For is completely ignored.
     """
     client_host = request.client.host if request.client else None
-    trusted_raw = os.getenv("TRUSTED_PROXIES", "")
+    trusted_raw = settings.trusted_proxies
     trusted_proxies: list[str] = [p.strip() for p in trusted_raw.split(",") if p.strip()]
 
     def _is_trusted_client() -> bool:
@@ -97,8 +97,8 @@ def enforce_email_rate_limit(email: str, db: Session) -> None:
     Per-email rate limit: blocks when the total number of failed attempts for
     this email (across ANY IP) within the rolling window exceeds the limit.
     """
-    window_minutes = int(os.getenv("LOGIN_RATE_LIMIT_WINDOW_MINUTES", "10"))
-    max_attempts = int(os.getenv("LOGIN_RATE_LIMIT_ATTEMPTS", "5"))
+    window_minutes = settings.login_rate_limit_window_minutes
+    max_attempts = settings.login_rate_limit_attempts
     now = datetime.now(timezone.utc)
     window = now - timedelta(minutes=window_minutes)
 
@@ -123,8 +123,8 @@ def enforce_login_rate_limit(email: str, request: Request, db: Session) -> None:
     """
     ip, _ = _get_real_ip(request)
     now = datetime.now(timezone.utc)
-    window_minutes = int(os.getenv("LOGIN_RATE_LIMIT_WINDOW_MINUTES", "10"))
-    max_attempts = int(os.getenv("LOGIN_RATE_LIMIT_ATTEMPTS", "5"))
+    window_minutes = settings.login_rate_limit_window_minutes
+    max_attempts = settings.login_rate_limit_attempts
     window = now - timedelta(minutes=window_minutes)
 
     # Check 1: per-email (defense-in-depth)

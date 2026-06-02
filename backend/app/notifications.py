@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from datetime import date, datetime, time, timezone
 from zoneinfo import ZoneInfo
-import os
 from html import escape
 from sqlalchemy.orm import Session
 
+from .config import settings
 from .emailer import alert_email_body, parse_recipients, send_email
 from .models import EmailNotificationLog, Presupuesto
 from .rules import CLOSED_STATES, calculate_risk, get_pedido_counts
@@ -521,7 +521,7 @@ def run_automatic_alert_checks(db: Session) -> dict:
         return {"active": False, "reason": "Avisos automáticos desactivados."}
 
     result: dict = {"active": True, "daily_digest": None, "escalations": None}
-    tz = ZoneInfo(os.getenv("APP_TIMEZONE", "Europe/Madrid"))
+    tz = ZoneInfo(settings.app_timezone)
     now = datetime.now(tz)
     if settings.get("resumen_diario_automatico_activo") and now.time() >= _parse_hora(settings.get("hora_resumen_diario")):
         result["daily_digest"] = send_alert_digest(db, only_critical=False, fingerprint_prefix=f"automatic:{date.today().isoformat()}")

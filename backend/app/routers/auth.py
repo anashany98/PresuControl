@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -21,6 +20,7 @@ from ..auth import (
     clear_auth_cookie,
 )
 from ..auth_rate_limit import clear_failed_logins, enforce_login_rate_limit, register_failed_login
+from ..config import settings
 from ..database import get_db
 
 from ..models import Usuario
@@ -91,7 +91,7 @@ def register(payload: UserRegister, request: Request, response: Response, db: Se
         raise HTTPException(status_code=409, detail="Ya existe un usuario con ese email.")
 
     first_user = db.query(Usuario).count() == 0
-    requires_approval = os.getenv("REGISTRATION_REQUIRES_APPROVAL", "true").lower() in {"1", "true", "yes", "on"}
+    requires_approval = settings.registration_requires_approval
     approved = first_user or not requires_approval
     user = Usuario(
         nombre=payload.nombre.strip(),
