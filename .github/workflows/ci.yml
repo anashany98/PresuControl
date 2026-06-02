@@ -152,3 +152,40 @@ jobs:
           build-args: VITE_API_URL=/api
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # ============== SECURITY SCAN ==============
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner (backend Dockerfile)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: ./backend
+          format: sarif
+          output: trivy-backend.sarif
+          severity: HIGH,CRITICAL
+          exit-code: 0  # non-blocking; report only
+
+      - name: Run Trivy vulnerability scanner (frontend Dockerfile)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: ./frontend
+          format: sarif
+          output: trivy-frontend.sarif
+          severity: HIGH,CRITICAL
+          exit-code: 0
+
+      - name: Upload Trivy results to Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-backend.sarif
+
+      - name: pip-audit (Python dependency vulnerabilities)
+        run: |
+          pip install pip-audit
+          pip-audit -r backend/requirements.txt --ignore-vuln GHSA-xxxx-yyyy-zzzz || true

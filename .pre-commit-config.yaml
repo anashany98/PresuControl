@@ -1,0 +1,50 @@
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+repos:
+  # ── General ─────────────────────────────────────────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-toml
+      - id: check-added-large-files
+        args: ['--maxkb=500']
+      - id: detect-private-key
+      - id: check-merge-conflict
+
+  # ── Python / Ruff ──────────────────────────────────────────
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.11.0
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+        files: ^backend/
+      - id: ruff-format
+        files: ^backend/
+
+  # ── JavaScript / ESLint ─────────────────────────────────────
+  - repo: https://github.com/pre-commit/mirrors-eslint
+    rev: v9.17.0
+    hooks:
+      - id: eslint
+        files: ^frontend/src/.*\.(ts|tsx)$
+        types: [file]
+        additional_dependencies:
+          - eslint@9.17.0
+          - '@eslint/js@9.17.0'
+          - typescript@5.7.2
+          - typescript-eslint@8.20.0
+        args: ['--max-warnings=0']
+
+  # ── TypeScript type-check ───────────────────────────────────
+  - repo: local
+    hooks:
+      - id: tsc
+        name: TypeScript type-check
+        entry: bash -c 'cd frontend && npx tsc --noEmit'
+        language: system
+        files: ^frontend/src/.*\.(ts|tsx)$
+        pass_filenames: false
