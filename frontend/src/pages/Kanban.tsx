@@ -7,6 +7,8 @@ import { useMetadataOptions } from '../utils/useMetadataOptions'
 import { useAuth } from '../utils/auth'
 import { useSearchParams } from 'react-router-dom'
 import { useToast } from '../utils/toast'
+import { useQueryClient } from '@tanstack/react-query'
+import { useKanbanBoard, queryKeys } from '../utils/useQueries'
 import { PedidoSummaryPanel } from '../components/PedidoSummaryPanel'
 import { Modal } from '../components/Modal'
 import { KanbanCard } from '../components/KanbanCard'
@@ -166,8 +168,6 @@ export function Kanban() {
 
   const [columnData, setColumnData] = useState<Record<string, Presupuesto[]>>({})
   const [columnTotals, setColumnTotals] = useState<Record<string, number>>({})
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [focusedCard, setFocusedCard] = useState<{ col: string; index: number } | null>(null)
   const [search, setSearch] = useState('')
   const [gestorFilter, setGestorFilter] = useState('')
@@ -178,32 +178,24 @@ export function Kanban() {
     } catch { return new Set<string>() }
   })
 
-  const loadColumns = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const results = await Promise.all(
-        columns.map(async (col) => {
-          const res = await api.get<{ items: Presupuesto[]; total: number }>(`/presupuestos?estado=${encodeURIComponent(col)}&sort=prioridad&page=1&page_size=8&ocultar_cerrados=false`)
-          return { col, items: res.items, total: res.total }
-        })
-      )
-      const data: Record<string, Presupuesto[]> = {}
-      const totals: Record<string, number> = {}
-      for (const r of results) {
-        data[r.col] = r.items
-        totals[r.col] = r.total
-      }
-      setColumnData(data)
-      setColumnTotals(totals)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    } finally {
-      setLoading(false)
-    }
-  }, [columns])
+  // Initial board data via React Query (cached, 15s staleTime).
+  // Server returns top-8 items per column + total counts in a single round-trip.
+  const { data: boardData, isLoading, error: boardError } = useKanbanBoard(gestorFilter || undefined)
 
-  useEffect(() => { loadColumns() }, [loadColumns])
+  useEffect(() => {
+    if (!boardData) return
+    const data: Record<string, Presupuesto[]> = {}
+    const totals: Record<string, number> = {}
+    for (const [col, colData] of Object.entries(boardData.columns)) {
+      data[col] = colData.items
+      totals[col] = colData.total
+    }
+    setColumnData(data)
+    setColumnTotals(totals)
+  }, [boardData])
+
+  const error = boardError ? (boardError as Error).message : null
+  const loading = isLoading
 
   useEffect(() => {
     localStorage.setItem('kanbanCollapsedCols', JSON.stringify([...collapsedCols]))
@@ -223,9 +215,10 @@ export function Kanban() {
     }
   }, [columnData])
 
+  const queryClient = useQueryClient()
   const reload = useCallback(() => {
-    loadColumns()
-  }, [loadColumns])
+    queryClient.invalidateQueries({ queryKey: queryKeys.presupuestos.kanban() })
+  }, [queryClient])
 
   const filteredColumnData = useMemo(() => {
     const result: Record<string, Presupuesto[]> = {}
