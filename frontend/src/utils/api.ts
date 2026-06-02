@@ -119,15 +119,9 @@ export function euro(value?: number | null | undefined): string {
   return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(value || 0)
 }
 
-export function fmtDate(value: unknown): string {
-  if (!value) return '—'
-  return new Intl.DateTimeFormat('es-ES').format(new Date(value as string))
-}
-
-export function isoDate(value?: string | null | undefined): string {
-  if (!value) return ''
-  return (value as string).slice(0, 10)
-}
+export { fmtDate, isoDate, fmtDateTime, relativeTime, isOverdue, daysBetween, todayISO, addDaysISO } from './dates'
+// Re-exported for convenience so existing `import { fmtDate, isoDate } from '../utils/api'` calls
+// continue to work while internally using date-fns with Spanish locale.
 
 export type KanbanColumnData = {
   items: Presupuesto[]
