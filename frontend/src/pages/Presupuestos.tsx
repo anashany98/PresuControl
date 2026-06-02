@@ -6,7 +6,7 @@ import { PriorityBadge, StateBadge } from '../components/Badges'
 import { SkeletonTable } from '../components/Skeleton'
 import { OptionInput } from '../components/OptionInput'
 import { ESTADOS, PRIORIDADES, api, euro, exportUrl, fmtDate, getAuthToken, API_URL, type PaginatedPresupuestos, type Presupuesto } from '../utils/api'
-import { useData } from '../utils/useData'
+import { usePresupuestosPage } from '../utils/useQueries'
 import { useMetadataOptions } from '../utils/useMetadataOptions'
 import { PedidoSummaryBadge } from '../components/PedidoSummary'
 
@@ -52,7 +52,9 @@ export function Presupuestos() {
   }, [visible, compact, prefsLoaded])
   const metadataOptions = useMetadataOptions()
   const query = params.toString()
-  const { data, loading, error, reload } = useData<PaginatedPresupuestos>(() => api.get(`/presupuestos-page?${query}`), [query])
+  // Build a stable object for the query key — strip internal pagination keys
+  // that should not change the cached result (or do, for placeholderData).
+  const { data, isLoading, error, refetch } = usePresupuestosPage(Object.fromEntries(params))
   const set = (key: string, value: string) => {
     const next = new URLSearchParams(params)
     if (value) next.set(key, value); else next.delete(key)
@@ -125,7 +127,7 @@ export function Presupuestos() {
           <label className="check"><input type="checkbox" checked={(params.get('ocultar_cerrados') ?? 'true') === 'true'} onChange={e => set('ocultar_cerrados', String(e.target.checked))}/> Ocultar cerrados</label>
           <label className="check"><input type="checkbox" checked={params.get('include_archivados') === 'true'} onChange={e => set('include_archivados', e.target.checked ? 'true' : '')}/> Ver archivados</label>
           <label className="check"><input type="checkbox" checked={compact} onChange={e => setCompact(e.target.checked)}/> Vista compacta</label>
-          <button className="btn secondary" onClick={reload}><RefreshCw size={16}/>Actualizar</button>
+          <button className="btn secondary" onClick={() => refetch()}><RefreshCw size={16}/>Actualizar</button>
           <button className="btn secondary" onClick={reset}><RotateCcw size={16}/>Limpiar</button>
           <button className="btn secondary" onClick={async () => {
     const token = getAuthToken()
@@ -150,8 +152,8 @@ export function Presupuestos() {
         </details>
       </div>
       {data && <div className="summary-strip"><span><strong>{data.total}</strong> presupuestos</span><span><strong>{euro(data.importe_total)}</strong> importe filtrado</span><span>Página {data.page} de {data.total_pages}</span></div>}
-      {error && <div className="error">{error}</div>}
-      {loading ? <SkeletonTable rows={6} /> : <PresupuestosTable rows={rows} has={has} compact={compact} sortBy={params.get('sort_by') || ''} sortDir={params.get('sort_dir') || 'desc'} onSort={(key) => {
+{error && <div className="error">{(error as Error).message}</div>}
+{isLoading ? <SkeletonTable rows={6} /> : <PresupuestosTable rows={rows} has={has} compact={compact} sortBy={params.get('sort_by') || ''} sortDir={params.get('sort_dir') || 'desc'} onSort={(key) => {
         const cur = params.get('sort_by') || ''
         const dir = params.get('sort_dir') || 'desc'
         if (cur === key) set('sort_dir', dir === 'asc' ? 'desc' : 'asc')
