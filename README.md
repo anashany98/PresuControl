@@ -225,30 +225,37 @@ Gestiona el certificado con Certbot, acme.sh o el mecanismo estándar del VPS.
 
 ### Backups y restore
 
-Backup diario recomendado por cron:
+El stack incluye un **sidecar de backup** (`./backup/`) que corre `pg_dump`
+automáticamente a las **03:00 cada día** (configurable con
+`BACKUP_SCHEDULE`). Los dumps aterrizan en el volumen `presucontrol_backups`
+y se conservan 30 días. Ver `backup/README.md` para los detalles.
+
+Inspeccionar backups desde el host:
 
 ```bash
-mkdir -p /var/backups/presucontrol
-crontab -e
+docker exec presucontrol-backup ls -lh /backups
+docker logs presucontrol-backup --since 24h | tail -50
 ```
 
-Entrada cron:
+Forzar un backup fuera del horario:
 
-```cron
-0 3 * * * cd /opt/presucontrol && BACKUP_DIR=/var/backups/presucontrol ./scripts/backup.sh >> /var/log/presucontrol_backup.log 2>&1
+```bash
+docker exec -u backup presucontrol-backup /opt/backup/backup.sh
 ```
 
-El script usa por defecto el contenedor `presucontrol-postgres`, conserva 30 días y falla si el fichero generado queda vacío.
-
-Restauración:
+Restauración (desde el host, apuntando al backup file):
 
 ```bash
 cd /opt/presucontrol
-docker compose up -d postgres
-./scripts/restore.sh /var/backups/presucontrol/presucontrol_YYYYmmdd_HHMMSS.sql.gz
-docker compose up -d
+docker compose -f docker-compose.prod.yml stop backend
+./scripts/restore.sh ./presucontrol_backup_YYYYmmdd_HHMMSS.sql.gz
+docker compose -f docker-compose.prod.yml up -d
 ```
 
+Si el backup está cifrado, pásale `--encrypted` y exporta
+`BACKUP_ENCRYPTION_PASSWORD` en el entorno del host. El script se encarga de
+descifrar, dropear la base, recrearla, restaurar y reaplicar las migraciones
+de Alembic.
 Antes de restaurar sobre producción real, para la app y confirma que el fichero pertenece al entorno correcto.
 
 ### Actualización y rollback

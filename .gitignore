@@ -55,6 +55,9 @@ htmlcov/
 # Backup
 *.bak
 *.backup
+backups/
+*.sql.gz
+*.sql.gz.enc
 
 # Local brainstorming companion
 .superpowers/
