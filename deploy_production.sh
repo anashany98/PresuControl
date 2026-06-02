@@ -56,6 +56,16 @@ echo "Starting services..."
 docker compose -f "$COMPOSE_FILE" up -d
 
 echo ""
+echo "Waiting for backup sidecar to install crontab..."
+for i in 1 2 3 4 5 6 7 8 9 10; do
+    if docker exec presucontrol-backup crontab -l 2>/dev/null | grep -q backup.sh; then
+        echo -e "${GREEN}OK${NC} (crontab installed)"
+        break
+    fi
+    sleep 1
+done
+
+echo ""
 echo "Waiting for services to be healthy..."
 sleep 5
 

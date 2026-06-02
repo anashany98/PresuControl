@@ -124,6 +124,21 @@ else
     check 1 "scripts/backup.sh not found"
 fi
 
+# 8b. Check backup sidecar (in-container, cron-driven)
+if [ -f backup/Dockerfile ] && [ -f backup/backup.sh ] && [ -f backup/entrypoint.sh ] && [ -f backup/crontab ]; then
+    check 0 "Backup sidecar (backup/) is configured"
+else
+    check 1 "Backup sidecar is incomplete — expected backup/{Dockerfile,backup.sh,entrypoint.sh,crontab}"
+fi
+
+# 8c. Check BACKUP_SCHEDULE is sane (5-field cron expression)
+BACKUP_SCHEDULE_VAL=$(grep "^BACKUP_SCHEDULE=" .env 2>/dev/null | cut -d'=' -f2- | tr -d ' ')
+if [ ${#BACKUP_SCHEDULE_VAL} -ge 9 ] && [ ${#BACKUP_SCHEDULE_VAL} -le 30 ]; then
+    check 0 "BACKUP_SCHEDULE looks like a cron expression (${BACKUP_SCHEDULE_VAL})"
+else
+    check 1 "BACKUP_SCHEDULE is missing or invalid (got: '${BACKUP_SCHEDULE_VAL}')"
+fi
+
 # 9. Check restore script exists
 if [ -f scripts/restore.sh ]; then
     check 0 "scripts/restore.sh exists"
