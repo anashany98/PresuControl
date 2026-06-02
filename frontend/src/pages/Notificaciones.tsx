@@ -2,10 +2,10 @@ import { useState } from 'react'
 import { Bell, BellOff, BellRing, Check, CheckCheck } from 'lucide-react'
 import { PageHeader } from '../components/PageHeader'
 import { Link } from 'react-router-dom'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { SkeletonCard } from '../components/Skeleton'
 import { EmptyState } from '../components/EmptyState'
 import { api, fmtDate } from '../utils/api'
-import { useData } from '../utils/useData'
 
 type Notificacion = {
   id: number
@@ -25,9 +25,17 @@ type NotificacionesResponse = {
 
 export function Notificaciones() {
   const [filter, setFilter] = useState<'todas' | 'sin-leer'>('todas')
-  const { data, loading, error, reload } = useData<NotificacionesResponse>(() =>
-    api.get('/notificaciones?only_unread=false&limit=100'), [])
+  const queryClient = useQueryClient()
+  const { data, isLoading, error, refetch } = useQuery<NotificacionesResponse>({
+    queryKey: ['notificaciones', 'list'],
+    queryFn: () => api.get<NotificacionesResponse>('/notificaciones?only_unread=false&limit=100'),
+  })
   const [msg, setMsg] = useState<string | null>(null)
+
+  const reload = () => {
+    refetch()
+    queryClient.invalidateQueries({ queryKey: ['notificaciones', 'count'] })
+  }
 
   async function markRead(id: number) {
     try {
@@ -57,12 +65,12 @@ export function Notificaciones() {
       </>}
     />
     {msg && <div className="notice" style={{ marginBottom: 14 }}>{msg}</div>}
-    {error && <div className="error">{error}</div>}
+    {error && <div className="error">{(error as Error).message}</div>}
     <div className="toolbar" style={{ marginBottom: 16 }}>
       <button className={`btn secondary small ${filter === 'todas' ? 'active' : ''}`} onClick={() => setFilter('todas')}>Todas</button>
       <button className={`btn secondary small ${filter === 'sin-leer' ? 'active' : ''}`} onClick={() => setFilter('sin-leer')}>Sin leer {data?.sin_leer ? `(${data.sin_leer})` : ''}</button>
     </div>
-    {loading ? <SkeletonCard /> : !filtered.length ? <div className="card">No hay notificaciones.</div> : (
+    {isLoading ? <SkeletonCard /> : !filtered.length ? <div className="card">No hay notificaciones.</div> : (
       <div className="compact-list">
         {filtered.map(n => (
           <div key={n.id} className={`compact-row${n.leida ? '' : ' unread'}`}>

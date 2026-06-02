@@ -4,9 +4,10 @@ import { PageHeader } from '../components/PageHeader'
 import { EmptyState } from '../components/EmptyState'
 import { StatCard } from '../components/StatCard'
 import { PriorityBadge, StateBadge } from '../components/Badges'
-import { api, euro, type Presupuesto } from '../utils/api'
-import { useData } from '../utils/useData'
+import { useQuery } from '@tanstack/react-query'
+import { euro, type Presupuesto } from '../utils/api'
 import { PedidoSummaryBadge } from '../components/PedidoSummary'
+
 
 type Bucket = { label: string; count: number; importe: number; items: Presupuesto[] }
 type Data = {
@@ -16,15 +17,18 @@ type Data = {
 }
 
 export function DineroRiesgo() {
-  const { data, loading, error, reload } = useData<Data>(() => api.get('/dinero-riesgo'), [])
-  if (loading) return <div className="card">Calculando dinero en riesgo...</div>
-  if (error || !data) return <div className="error">{error || 'Error'}</div>
+  const { data, isLoading, error, refetch } = useQuery<Data>({
+    queryKey: ['dinero-riesgo'],
+    queryFn: () => import('../utils/api').then(m => m.api.get<Data>('/dinero-riesgo')),
+  })
+  if (isLoading) return <div className="card">Calculando dinero en riesgo...</div>
+  if (error || !data) return <div className="error">{(error as Error)?.message || 'Error'}</div>
   const buckets = Object.entries(data.buckets)
   return <>
     <PageHeader
       title="Dinero en riesgo"
       subtitle="Importe de presupuestos que pueden quedar bloqueados por falta de pedido, plazo, actualización o incidencia."
-      actions={<button className="btn secondary" onClick={reload}>Actualizar</button>}
+      actions={<button className="btn secondary" onClick={() => refetch()}>Actualizar</button>}
     />
     <div className="grid cards">
       <StatCard label="Presupuestos en riesgo" value={data.total_presupuestos_en_riesgo} icon={AlertTriangle} tone={data.total_presupuestos_en_riesgo ? '#dc2626' : undefined} />
