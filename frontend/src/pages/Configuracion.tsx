@@ -1,8 +1,9 @@
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, CheckCircle2, Mail, Plus, RotateCcw, Save, Server, Settings, Shield, X } from 'lucide-react'
 import { PageHeader } from '../components/PageHeader'
 import { api, type Settings as SettingsType } from '../utils/api'
-import { useData } from '../utils/useData'
+import { useSettings, queryKeys } from '../utils/useQueries'
 import { useMetadataOptions } from '../utils/useMetadataOptions'
 import { useToast } from '../utils/toast'
 
@@ -182,7 +183,15 @@ function StatusTile({ label, value, tone = 'neutral' }: { label: string; value: 
 }
 
 export function Configuracion() {
-  const { data, loading, error, setData, reload } = useData<SettingsType>(() => api.get('/settings'), [])
+  const queryClient = useQueryClient()
+  const { data, isLoading, error, refetch } = useSettings()
+  const reload = () => queryClient.invalidateQueries({ queryKey: queryKeys.settings })
+  const setData = (updated: SettingsType | ((prev: SettingsType | undefined) => SettingsType | undefined)) => {
+    queryClient.setQueryData<SettingsType>(queryKeys.settings, (prev: SettingsType | undefined) => {
+      if (typeof updated === 'function') return (updated as (p: SettingsType | undefined) => SettingsType | undefined)(prev)
+      return updated
+    })
+  }
   const metadataOptions = useMetadataOptions()
   const toast = useToast()
   const [activeTab, setActiveTab] = useState<Tab>('general')
@@ -202,8 +211,8 @@ export function Configuracion() {
     return Object.keys(data).filter(key => stable(data[key as keyof SettingsType]) !== stable(saved[key as keyof SettingsType])).length
   }, [data, savedSnapshot])
 
-  if (loading) return <div className="card">Cargando configuración...</div>
-  if (error || !data) return <div className="error">{error || 'Error'}</div>
+  if (isLoading) return <div className="card">Cargando configuración...</div>
+  if (error || !data) return <div className="error">{(error as Error)?.message || 'Error'}</div>
 
   const set = <K extends keyof SettingsType>(key: K, value: SettingsType[K]) => setData({ ...data, [key]: value })
   const setList = (key: keyof SettingsType, value: string[]) => setData({ ...data, [key]: cleanList(value) })
