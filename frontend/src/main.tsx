@@ -2,11 +2,13 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { createBrowserRouter, Navigate, RouterProvider } from 'react-router-dom'
 import { lazy, Suspense, type ReactNode } from 'react'
+import { QueryClientProvider } from '@tanstack/react-query'
 import './styles.css'
 import { Layout } from './components/Layout'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { AuthProvider, isSystemAdmin, useAuth } from './utils/auth'
 import { ToastProvider } from './utils/toast'
+import { queryClient } from './utils/queryClient'
 
 // Init dark mode
 if (localStorage.getItem('darkMode') === '1') {
@@ -99,7 +101,9 @@ const router = createBrowserRouter([
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ErrorBoundary>
-      <AuthProvider><ToastProvider><RouterProvider router={router} /></ToastProvider></AuthProvider>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider><ToastProvider><RouterProvider router={router} /></ToastProvider></AuthProvider>
+      </QueryClientProvider>
     </ErrorBoundary>
   </React.StrictMode>
 )
