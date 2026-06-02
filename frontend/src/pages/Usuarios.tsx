@@ -1,8 +1,9 @@
 import { useState, useMemo } from 'react'
 import { CheckCircle2, ChevronLeft, ChevronRight, KeyRound, RefreshCw, Search, ShieldCheck, ShieldOff, Trash2, UserPlus, UserX, X } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
 import { PageHeader } from '../components/PageHeader'
 import { api, fmtDate, type UserAdmin } from '../utils/api'
-import { useData } from '../utils/useData'
+import { useUsuarios, queryKeys } from '../utils/useQueries'
 import { useToast } from '../utils/toast'
 
 const PAGE_SIZE = 10
@@ -11,7 +12,9 @@ type ConfirmModal = { type: 'deactivate' | 'reset'; userId: number; userName: st
 
 export function Usuarios() {
   const toast = useToast()
-  const { data, loading, error, reload } = useData<UserAdmin[]>(() => api.get('/usuarios'), [])
+  const queryClient = useQueryClient()
+  const { data, isLoading, error, refetch } = useUsuarios()
+  const reload = () => queryClient.invalidateQueries({ queryKey: queryKeys.usuarios })
   const [search, setSearch] = useState('')
   const [filterRol, setFilterRol] = useState<'all' | 'admin' | 'gestion'>('all')
   const [filterEstado, setFilterEstado] = useState<'all' | 'activo' | 'pendiente' | 'inactivo'>('all')
@@ -158,8 +161,8 @@ export function Usuarios() {
       subtitle="Gestiona cuentas, permisos y acceso al sistema."
       actions={<><button className="btn primary small" onClick={() => { setCreateError(null); setShowCreate(true) }}><UserPlus size={16}/>Crear usuario</button><button className="btn secondary" onClick={reload} aria-label="Actualizar usuarios"><RefreshCw size={16}/>Actualizar</button></>}
     />
-    {error && <div className="error">{error}</div>}
-    {loading ? (
+    {error && <div className="error">{(error as Error).message}</div>}
+    {isLoading ? (
       <div className="card">Cargando usuarios...</div>
     ) : (
       <>
