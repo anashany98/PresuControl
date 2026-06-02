@@ -115,20 +115,20 @@ fi
 # 8. Check backup script exists
 echo ""
 echo "=== 8. Backup System ==="
-if [ -f backup.sh ]; then
-    check 0 "backup.sh exists"
-    if [ -x backup.sh ] || [ -f backup.sh ]; then
-        check 0 "backup.sh is accessible"
+if [ -f scripts/backup.sh ]; then
+    check 0 "scripts/backup.sh exists"
+    if [ -x scripts/backup.sh ] || [ -f scripts/backup.sh ]; then
+        check 0 "scripts/backup.sh is accessible"
     fi
 else
-    check 1 "backup.sh not found"
+    check 1 "scripts/backup.sh not found"
 fi
 
 # 9. Check restore script exists
-if [ -f restore.sh ]; then
-    check 0 "restore.sh exists"
+if [ -f scripts/restore.sh ]; then
+    check 0 "scripts/restore.sh exists"
 else
-    check 1 "restore.sh not found"
+    check 1 "scripts/restore.sh not found"
 fi
 
 # 10. Run tests if possible
@@ -159,7 +159,7 @@ if [ $ERRORS -eq 0 ]; then
     echo "1. docker compose build"
     echo "2. docker compose up -d"
     echo "3. Configure Nginx + SSL"
-    echo "4. Test backup.sh"
+    echo "4. Test scripts/backup.sh"
     echo "5. Set up cron for daily backups"
     exit 0
 else

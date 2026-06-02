@@ -4,6 +4,9 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 BACKUP_DIR="${BACKUP_DIR:-./backups}"
 RETENTION="${BACKUP_RETENTION_DAYS:-30}"
 DB_NAME="${DB_NAME:-presucontrol}"
+DB_USER="${DB_USER:-presucontrol}"
+# Container name: use BACKUP_CONTAINER env var, then presucontrol-postgres, then auto-detect
+CONTAINER="${BACKUP_CONTAINER:-}"
 ENCRYPT=false
 [[ "${1:-}" == "--encrypt" ]] && ENCRYPT=true
 
@@ -11,18 +14,26 @@ mkdir -p "$BACKUP_DIR"
 BACKUP_FILE="$BACKUP_DIR/presucontrol_backup_${TIMESTAMP}.sql.gz"
 echo "[$(date -Iseconds)] Starting backup to: $BACKUP_FILE"
 
-if [[ -f .env ]]; then set -a; source .env; set +a; fi
-
-if [[ -n "${DATABASE_URL:-}" ]]; then
-    export PGHOST=$(echo "$DATABASE_URL" | sed -n 's/.*@\([^:/]*\).*//p')
-    export PGPORT=$(echo "$DATABASE_URL" | sed -n 's/.*:\([0-9]*\)\/.*//p')
-    export PGUSER=$(echo "$DATABASE_URL" | sed -n 's/.*:\/\/\([^:]*\):.*//p')
-    export PGPASSWORD=$(echo "$DATABASE_URL" | sed -n 's/.*:\/\/[^:]*:\([^@]*\)@.*//p')
+# Detect container if not explicitly set
+if [[ -z "$CONTAINER" ]]; then
+    CONTAINER=$(docker ps --filter "ancestor=postgres:16-alpine" --format '{{.Names}}' | head -1)
+    if [[ -z "$CONTAINER" ]]; then
+        CONTAINER="presucontrol-postgres"
+    fi
 fi
 
-pg_dump -d "$DB_NAME" --no-owner --no-acl | gzip > "$BACKUP_FILE"
+# Verify container is running
+if ! docker inspect "$CONTAINER" --format '{{.State.Running}}' 2>/dev/null | grep -q true; then
+    echo "ERROR: PostgreSQL container '$CONTAINER' is not running." >&2
+    exit 1
+fi
+echo "[$(date -Iseconds)] Using container: $CONTAINER"
+
+# Run pg_dump inside the container
+docker exec "$CONTAINER" pg_dump -U "$DB_USER" -d "$DB_NAME" --no-owner --no-acl | gzip > "$BACKUP_FILE"
 echo "[$(date -Iseconds)] Backup completed: $(du -h "$BACKUP_FILE" | cut -f1)"
 
+# Verify backup integrity: must contain at least 5 tables
 TABLE_COUNT=$(gunzip -c "$BACKUP_FILE" | grep -c "CREATE TABLE")
 if [ "$TABLE_COUNT" -lt 5 ]; then
     echo "ERROR: Backup parece incompleto (solo $TABLE_COUNT tablas)" >&2

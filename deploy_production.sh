@@ -41,17 +41,19 @@ if [ -d .git ]; then
     git pull origin $(git branch --show-current)
 fi
 
+COMPOSE_FILE="docker-compose.prod.yml"
+
 echo ""
 echo "Building Docker images..."
-docker compose build
+docker compose -f "$COMPOSE_FILE" build
 
 echo ""
 echo "Stopping existing containers..."
-docker compose down
+docker compose -f "$COMPOSE_FILE" down
 
 echo ""
 echo "Starting services..."
-docker compose up -d
+docker compose -f "$COMPOSE_FILE" up -d
 
 echo ""
 echo "Waiting for services to be healthy..."
@@ -75,12 +77,13 @@ done
 if [ $ATTEMPT -eq $MAX_ATTEMPTS ]; then
     echo ""
     echo -e "${RED}WARNING: Backend health check failed${NC}"
-    echo "Check logs: docker compose logs backend"
+    echo "Check logs: docker compose -f $COMPOSE_FILE logs backend"
 fi
 
 # Check PostgreSQL
 echo -n "PostgreSQL check: "
-if docker exec presucontrol-postgres pg_isready -U presucontrol >/dev/null 2>&1; then
+PG_CONTAINER=$(docker ps --filter "ancestor=postgres:16-alpine" --format '{{.Names}}' | head -1)
+if [ -n "$PG_CONTAINER" ] && docker exec "$PG_CONTAINER" pg_isready -U presucontrol >/dev/null 2>&1; then
     echo -e "${GREEN}OK${NC}"
 else
     echo -e "${RED}WARNING: PostgreSQL not ready${NC}"
@@ -92,10 +95,10 @@ echo -e "${GREEN}Deploy completed!${NC}"
 echo "============================================"
 echo ""
 echo "Services:"
-docker compose ps
+docker compose -f "$COMPOSE_FILE" ps
 echo ""
 echo "Logs:"
-echo "  docker compose logs -f"
+echo "  docker compose -f $COMPOSE_FILE logs -f"
 echo ""
 echo "Test:"
 echo "  curl -I http://127.0.0.1:8088"
