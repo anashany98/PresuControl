@@ -3,8 +3,8 @@ import { AlertTriangle, ArrowRight, Calendar, CheckCircle2, Clock3, PackagePlus,
 import { Link, useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/PageHeader'
 import { SkeletonTable } from '../components/Skeleton'
+import { useQuery } from '@tanstack/react-query'
 import { api, euro, type OperationalPriority, type Presupuesto, type RecommendedActionType } from '../utils/api'
-import { useData } from '../utils/useData'
 import { PRIORITY_COLOR } from '../utils/tokens'
 import { PedidoSummaryBadge } from '../components/PedidoSummary'
 import { mergeOperationalContext, operationalPriorityLabel } from '../utils/workflow'
@@ -115,7 +115,10 @@ function WorkCard({ item, onGoKanban }: { item: Presupuesto; onGoKanban: (id: nu
 }
 
 export function MiTrabajo() {
-  const { data, loading, error, reload } = useData<MiMesaResponse>(() => api.get('/mi-mesa'), [])
+  const { data, isLoading, error, refetch } = useQuery<MiMesaResponse>({
+    queryKey: ['mi-mesa'],
+    queryFn: () => api.get<MiMesaResponse>('/mi-mesa'),
+  })
   const navigate = useNavigate()
 
   const goKanban = (id: number) => navigate(`/kanban?focus=${id}`)
@@ -134,7 +137,7 @@ export function MiTrabajo() {
     <PageHeader
       title="Mi trabajo"
       subtitle={data?.usuario?.nombre ? `Tareas asignadas a ${data.usuario.nombre}` : 'Tareas pendientes'}
-      actions={<button className="btn secondary" onClick={reload}><RefreshCw size={16} /> Actualizar</button>}
+      actions={<button className="btn secondary" onClick={() => refetch()}><RefreshCw size={16} /> Actualizar</button>}
     />
 
     <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-4">
@@ -145,8 +148,8 @@ export function MiTrabajo() {
       <KpiBadge label="Sin fecha" value={r?.sin_fecha ?? grouped.sin_fecha.length} tone={(r?.sin_fecha ?? grouped.sin_fecha.length) ? 'warning' : 'default'} />
     </div>
 
-    {error && <div className="error">{error}</div>}
-    {loading ? <SkeletonTable rows={6} /> : <>
+    {error && <div className="error">{(error as Error).message}</div>}
+    {isLoading ? <SkeletonTable rows={6} /> : <>
       {(data?.items || []).length === 0 ? (
         <div className="text-center py-12 text-ink-muted">
           <CheckCircle2 size={32} className="mx-auto mb-2 text-success" />

@@ -4,8 +4,8 @@ import { Link } from 'react-router-dom'
 import { PageHeader } from '../components/PageHeader'
 import { PriorityBadge } from '../components/Badges'
 import { SkeletonTable } from '../components/Skeleton'
-import { api, euro, type Presupuesto } from '../utils/api'
-import { useData } from '../utils/useData'
+import { useQuery } from '@tanstack/react-query'
+import { euro, type Presupuesto } from '../utils/api'
 import { PedidoSummaryBadge } from '../components/PedidoSummary'
 
 type MiMesaResponse = {
@@ -62,10 +62,13 @@ function SwipeableCard({ item }: { item: Presupuesto }) {
 }
 
 export function MiMesa() {
-  const { data, loading, error, reload } = useData<MiMesaResponse>(() => api.get('/mi-mesa'), [])
+  const { data, isLoading, error, refetch } = useQuery<MiMesaResponse>({
+    queryKey: ['mi-mesa'],
+    queryFn: () => import('../utils/api').then(m => m.api.get<MiMesaResponse>('/mi-mesa')),
+  })
   const r = data?.resumen
   return <>
-    <PageHeader title="Mi mesa de trabajo" subtitle={`Acciones pendientes vinculadas al usuario actual${data?.usuario?.nombre ? `: ${data.usuario.nombre}` : ''}.`} actions={<button className="btn secondary" onClick={reload}><RefreshCw size={16}/>Actualizar</button>} />
+    <PageHeader title="Mi mesa de trabajo" subtitle={`Acciones pendientes vinculadas al usuario actual${data?.usuario?.nombre ? `: ${data.usuario.nombre}` : ''}.`} actions={<button className="btn secondary" onClick={() => refetch()}><RefreshCw size={16}/>Actualizar</button>} />
     <div className="grid cards stats-row">
       <div className="card hero-mini"><BriefcaseBusiness size={22}/><div><strong>{r?.total || 0}</strong><p>Tareas visibles</p></div></div>
       <div className="card"><strong>{r?.vencidos || 0}</strong><p className="muted">Vencidos</p></div>
@@ -73,8 +76,8 @@ export function MiMesa() {
       <div className="card"><strong>{r?.aceptados_sin_pedido || 0}</strong><p className="muted">Aceptados sin pedido</p></div>
       <div className="card"><strong>{r?.incidencias || 0}</strong><p className="muted">Incidencias</p></div>
     </div>
-    {error && <div className="error">{error}</div>}
-    {loading ? <SkeletonTable rows={6} /> : <>
+    {error && <div className="error">{(error as Error).message}</div>}
+    {isLoading ? <SkeletonTable rows={6} /> : <>
       <div className="mobile-list" style={{ marginTop: 16 }}>
         {(data?.items || []).map(item => <SwipeableCard key={item.id} item={item} />)}
       </div>

@@ -3,10 +3,9 @@ import { CheckCircle2, Circle, RefreshCw } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { PageHeader } from '../components/PageHeader'
 import { SkeletonCard } from '../components/Skeleton'
-import { api, euro, type Presupuesto } from '../utils/api'
+import { useQuery } from '@tanstack/react-query'
+import { euro, type Presupuesto } from '../utils/api'
 import { useToast } from '../utils/toast'
-import { useData } from '../utils/useData'
-import { useAuth } from '../utils/auth'
 import { PedidoSummaryBadge } from '../components/PedidoSummary'
 
 type SectionKey = 'hoy' | 'semana' | 'atrasados' | 'sin_accion'
@@ -77,7 +76,10 @@ function HoyItem({ p, onDone, done }: { p: Presupuesto; onDone: (p: Presupuesto)
 }
 
 export function Hoy() {
-  const { data, loading, error, reload } = useData<Presupuesto[]>(() => api.get('/hoy'), [])
+  const { data, isLoading, error, refetch } = useQuery<Presupuesto[]>({
+    queryKey: ['hoy'],
+    queryFn: () => import('../utils/api').then(m => m.api.get<Presupuesto[]>('/hoy')),
+  })
   const [done, setDone] = useState<Set<number>>(new Set())
   const [msg, setMsg] = useState<string | null>(null)
   const toast = useToast()
@@ -113,6 +115,7 @@ export function Hoy() {
   async function markDone(p: Presupuesto) {
     setDone(d => new Set([...d, p.id]))
     try {
+      const { api } = await import('../utils/api')
       await api.patch<Presupuesto>(`/presupuestos/${p.id}`, {
         ...p,
         expected_version: p.version,
@@ -126,10 +129,10 @@ export function Hoy() {
   }
 
   return <>
-    <PageHeader title="Hoy" subtitle="Vista general de acciones" actions={<button className="btn secondary" onClick={reload}><RefreshCw size={16}/></button>} />
+    <PageHeader title="Hoy" subtitle="Vista general de acciones" actions={<button className="btn secondary" onClick={() => refetch()}><RefreshCw size={16}/></button>} />
     {msg && <div className="notice" style={{ marginBottom: 14 }}>{msg}</div>}
-    {error && <div className="error">{error}</div>}
-    {loading ? <SkeletonCard /> : <>
+    {error && <div className="error">{(error as Error).message}</div>}
+    {isLoading ? <SkeletonCard /> : <>
       {sections.length === 0 ? (
         <div className="empty-state">
           <div className="empty-icon">🎉</div>
