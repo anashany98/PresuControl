@@ -7,9 +7,9 @@ import {
   Table2, UploadCloud, UserCheck,
 } from 'lucide-react'
 import { isSystemAdmin, useAuth } from '../utils/auth'
-import { api, type SidebarCounters } from '../utils/api'
+import { type SidebarCounters } from '../utils/api'
 import { useToast } from '../utils/toast'
-import { useData } from '../utils/useData'
+import { useSidebarCounters } from '../utils/useQueries'
 import { KeyboardShortcutsModal, useKeyboardShortcuts } from './KeyboardShortcuts'
 import { NotifPanel } from './NotifPanel'
 import { ActivityPanel } from './ActivityPanel'
@@ -70,7 +70,7 @@ export function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const navigate = useNavigate()
 
-  const counters = useData<SidebarCounters>(() => api.get('/sidebar-counters'), [])
+  const { data: counters } = useSidebarCounters()
   const { user } = useAuth()
   const toast = useToast()
 
@@ -173,7 +173,7 @@ export function Layout() {
       <a href="#main-content" className="skip-link">Saltar al contenido principal</a>
       <Topbar
         sections={visibleSections}
-        counters={(counters.data as SidebarCounters) || {}}
+        counters={counters || {}}
         onMenuClick={() => setSidebarOpen(true)}
         onNotifClick={() => setNotifPanel(!notifPanel)}
         isAdmin={isAdmin}
@@ -189,14 +189,14 @@ export function Layout() {
       {/* ── Mobile Bottom Tabs ── */}
       <BottomTabs
         bottomTabs={bottomTabs}
-        counters={counters.data as SidebarCounters || {}}
+        counters={counters || {}}
       />
 
       {/* ── Mobile Drawer ── */}
       <MobileDrawer
         open={sidebarOpen}
         sections={visibleSections}
-        counters={counters.data as SidebarCounters || {}}
+        counters={counters || {}}
         onClose={() => setSidebarOpen(false)}
       />
 
