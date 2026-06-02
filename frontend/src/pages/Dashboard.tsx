@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { AlertCircle, AlertTriangle, Calendar, CheckCircle2, Clock3, Download, FilePlus, FileText, Package, PackageCheck, ShieldAlert, TrendingUp } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { api, ESTADOS, euro } from '../utils/api'
 import { ESTADO_COLOR } from '../utils/tokens'
 import { useMetadataOptions } from '../utils/useMetadataOptions'
 import { isSystemAdmin, useAuth } from '../utils/auth'
-import { useData } from '../utils/useData'
+import { useDashboard, queryKeys } from '../utils/useQueries'
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { KpiCard } from '../components/KpiCard'
 import { AlertBanner } from '../components/AlertBanner'
@@ -32,13 +33,17 @@ export function Dashboard() {
   const isAdmin = isSystemAdmin(user)
   const [view, setView] = useState<DashboardView>('normal')
 
-  const { data, loading, error } = useData<DashboardPayload>(() => api.get('/dashboard'), [])
+  const { data, isLoading, error } = useDashboard()
 
-  const execData = useData<ExecPayload>(() => api.get('/dashboard/ejecutivo'), [view])
+  const execData = useQuery<ExecPayload>({
+    queryKey: [...queryKeys.dashboard, 'ejecutivo', view],
+    queryFn: () => api.get<ExecPayload>('/dashboard/ejecutivo'),
+    enabled: isAdmin,
+  })
   const metadata = useMetadataOptions()
 
-  if (loading) return <DashboardSkeleton />
-  if (error || !data) return <div className="error p-4">{error || 'No se pudo cargar el dashboard'}</div>
+  if (isLoading) return <DashboardSkeleton />
+  if (error || !data) return <div className="error p-4">{(error as Error)?.message || 'No se pudo cargar el dashboard'}</div>
 
   const cards = data.cards
   const allPresupuestos = Object.values(data.sections).flat()
@@ -199,7 +204,7 @@ export function Dashboard() {
       {/* ── Executive Dashboard (admin only) ── */}
       {view === 'ejecutivo' && isAdmin && (
         <div>
-          {execData.loading ? <DashboardSkeleton /> : execData.error ? <div className="error p-4">{execData.error}</div> : execData.data ? (
+{execData.isLoading ? <DashboardSkeleton /> : execData.error ? <div className="error p-4">{(execData.error as Error).message}</div> : execData.data ? (
             <>
               {/* Executive KPIs */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">

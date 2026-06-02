@@ -169,9 +169,9 @@ export function useDeletePedido(pedidoId: number, presupuestoId: number) {
 // ── Dashboard & Sidebar ───────────────────────────────────────────
 
 export function useDashboard() {
-  return useQuery<Record<string, unknown>>({
+  return useQuery<import('./dashboard').DashboardPayload>({
     queryKey: queryKeys.dashboard,
-    queryFn: () => api.get('/dashboard'),
+    queryFn: () => api.get<import('./dashboard').DashboardPayload>('/dashboard'),
     staleTime: 30_000,
   })
 }
