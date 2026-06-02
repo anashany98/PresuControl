@@ -1,0 +1,9 @@
+# PresuControl V5 backup schedule.
+#
+# The actual cron expression is substituted at container start from the
+# BACKUP_SCHEDULE env var (see entrypoint.sh). Default if unset: 03:00 daily.
+#
+# To run on demand (e.g. for testing), exec /opt/backup/backup.sh inside the
+# running sidecar:
+#   docker exec presucontrol-backup /opt/backup/backup.sh
+__BACKUP_SCHEDULE__ /opt/backup/backup.sh >> /proc/1/fd/1 2>&1

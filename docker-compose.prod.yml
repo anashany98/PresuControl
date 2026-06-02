@@ -93,8 +93,50 @@ services:
     networks:
       - frontend
 
+  # ── Backup sidecar ──────────────────────────────────────────────
+  # Runs pg_dump on a cron schedule (default 03:00) into a shared volume.
+  # Set BACKUP_SCHEDULE, BACKUP_RETENTION_DAYS, BACKUP_ENCRYPTION_PASSWORD
+  # in Coolify env to customise. See backup/README.md for the full schema.
+  backup:
+    build:
+      context: ./backup
+    restart: unless-stopped
+    environment:
+      PGHOST: postgres
+      PGPORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-presucontrol}
+      POSTGRES_USER: ${POSTGRES_USER:-presucontrol}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      BACKUP_DIR: ${BACKUP_DIR:-/backups}
+      BACKUP_SCHEDULE: ${BACKUP_SCHEDULE:-0 3 * * *}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
+      BACKUP_ENCRYPTION_PASSWORD: ${BACKUP_ENCRYPTION_PASSWORD:-}
+      TZ: ${APP_TIMEZONE:-Europe/Madrid}
+    volumes:
+      - presucontrol_backups:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      # Healthy = crond is running AND a backup file exists in the volume.
+      # (We can't check the age of the last backup here without state — the
+      # `.last_backup_at` heartbeat is checked by the host-level script
+      # scripts/backup.sh via docker exec for now.)
+      test: ["CMD-SHELL", "pgrep -x crond >/dev/null"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+          cpus: '0.25'
+    networks:
+      - internal
+
 volumes:
   presucontrol_pgdata:
+  presucontrol_backups:
 
 networks:
   internal:
