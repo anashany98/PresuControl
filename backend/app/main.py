@@ -5,12 +5,17 @@ import io
 import json
 import logging
 import os
+import sys
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Literal
 import re
 
-logger = logging.getLogger(__name__)
+import sentry_sdk
+from loguru import logger
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sentry_sdk.integrations.loguru import LoguruIntegration
+from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
 
 import pandas as pd
 from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile, Request
@@ -58,7 +63,7 @@ from .schemas import (
 )
 from .settings import get_settings, update_settings
 from .sse_manager import sse
-from .config import get_fastapi_docs_config, get_public_paths, is_production, validate_runtime_config
+from .config import get_fastapi_docs_config, get_public_paths, is_production, validate_runtime_config, settings
 from .auth import get_authenticated_user_from_request, is_auth_enabled
 from .access_control import ADMIN_ROLE, require_gestion_or_admin, require_system_manager, user_role
 from .analytics import (
@@ -89,15 +94,41 @@ from .cache import cache
 
 ActionDict = dict[str, str]
 
-# Configure logging for production
-logging.basicConfig(
-    level=os.getenv("LOG_LEVEL", "INFO"),
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
+# ── Logging: loguru ──────────────────────────────────────────────────
+logger.remove()
+logger.add(
+    sys.stdout,
+    format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan> | <level>{message}</level>",
+    level=settings.log_level,
+    colorize=False,
 )
+logger.add(
+    "logs/presucontrol_{time:YYYY-MM-DD}.log",
+    rotation="10 MB",
+    retention="30 days",
+    format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name} | {message}",
+    level="INFO",
+)
+
+# ── Sentry ──────────────────────────────────────────────────────────
+if settings.sentry_dsn:
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn,
+        traces_sample_rate=settings.sentry_traces_sample_rate,
+        environment=settings.resolved_env,
+        integrations=[
+            FastApiIntegration(),
+            LoguruIntegration(),
+            SqlalchemyIntegration(),
+        ],
+    )
+    logger.info("Sentry initialized (env={}, sample_rate={})", settings.resolved_env, settings.sentry_traces_sample_rate)
+else:
+    logger.info("Sentry not configured (SENTRY_DSN not set)")
+
 # Set library log levels to reduce noise
 logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
-logging.getLogger("sqlalchemy.engine").setLevel(os.getenv("SQLALCHEMY_LOG_LEVEL", "WARNING"))
+logging.getLogger("sqlalchemy.engine").setLevel(settings.sqlalchemy_log_level)
 
 
 async def automatic_alert_loop():
@@ -135,7 +166,7 @@ async def cleanup_old_rate_limits():
 async def lifespan(app: FastAPI):
     task: asyncio.Task | None = None
     cleanup_task: asyncio.Task | None = None
-    if os.getenv("SCHEDULER_ENABLED", "true").lower() in {"1", "true", "yes", "on"}:
+    if settings.scheduler_enabled:
         task = asyncio.create_task(automatic_alert_loop())
         cleanup_task = asyncio.create_task(cleanup_old_rate_limits())
     try:
@@ -183,7 +214,7 @@ def validate_origin(origin: str, is_prod: bool) -> bool:
     return True
 
 
-origins = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost:3000").split(",")
+origins = settings.cors_origins.split(",")
 valid_origins = [o.strip() for o in origins if validate_origin(o.strip(), is_production())]
 
 if not valid_origins:
@@ -202,7 +233,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-if os.getenv("RUN_CREATE_ALL", "false").lower() in {"1", "true", "yes", "on"}:
+if settings.run_create_all:
     Base.metadata.create_all(bind=engine)
 
 
@@ -236,7 +267,7 @@ def ensure_schema_compatibility():
         conn.execute(text("ALTER TABLE email_notification_logs ADD COLUMN IF NOT EXISTS escalation_level INTEGER NOT NULL DEFAULT 0"))
 
 
-if os.getenv("RUN_DEFENSIVE_MIGRATIONS", "false").lower() in {"1", "true", "yes", "on"}:
+if settings.run_defensive_migrations:
     ensure_schema_compatibility()
 
 
@@ -501,7 +532,7 @@ def apply_sort(query, sort_by: str | None, sort_dir: str | None):
     return query.order_by(asc(column) if sort_dir == "asc" else desc(column))
 
 # Debug endpoints - only available when DEBUG_MODE=true
-DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() in {"1", "true", "yes", "on"}
+DEBUG_MODE = settings.debug_mode
 
 if DEBUG_MODE:
 
@@ -519,7 +550,7 @@ if DEBUG_MODE:
 
 
 # Seed demo endpoint - only available when SEED_DEMO=true
-SEED_DEMO_MODE = os.getenv("SEED_DEMO", "false").lower() in {"1", "true", "yes", "on"}
+SEED_DEMO_MODE = settings.seed_demo
 
 
 @app.get("/sse/subscribe")
@@ -561,21 +592,21 @@ async def sse_subscribe(request: Request):
 @app.get("/settings", response_model=SettingsOut)
 def read_settings(request: Request, db: Session = Depends(get_db)):
     require_system_manager(request)
-    settings = get_settings(db)
+    db_settings = get_settings(db)
     return {
-        **settings,
-        "timezone": os.getenv("APP_TIMEZONE", "Europe/Madrid"),
-        "public_url": os.getenv("APP_PUBLIC_URL", "http://localhost:8088"),
+        **db_settings,
+        "timezone": settings.app_timezone,
+        "public_url": settings.app_public_url,
         # SMTP: env vars > DB settings
-        "smtp_host": os.getenv("SMTP_HOST") or settings.get("smtp_host") or "",
-        "smtp_port": int(os.getenv("SMTP_PORT") or settings.get("smtp_port", 587)),
-        "smtp_user": os.getenv("SMTP_USER") or settings.get("smtp_user") or "",
-        "smtp_from": os.getenv("SMTP_FROM") or settings.get("smtp_from") or "",
-        "smtp_tls": (bool(os.getenv("SMTP_HOST")) and os.getenv("SMTP_TLS", "true").lower() in {"1", "true", "yes", "on"})
-                     or (not os.getenv("SMTP_HOST") and bool(settings.get("smtp_tls", True))),
+        "smtp_host": settings.smtp_host or db_settings.get("smtp_host") or "",
+        "smtp_port": settings.smtp_port or int(db_settings.get("smtp_port", 587)),
+        "smtp_user": settings.smtp_user or db_settings.get("smtp_user") or "",
+        "smtp_from": settings.smtp_from or db_settings.get("smtp_from") or "",
+        "smtp_tls": (bool(settings.smtp_host) and settings.smtp_tls)
+                     or (not settings.smtp_host and bool(db_settings.get("smtp_tls", True))),
         "smtp_configured": bool(
-            (os.getenv("SMTP_HOST") or settings.get("smtp_host")) 
-            and (os.getenv("SMTP_FROM") or settings.get("smtp_from"))
+            (settings.smtp_host or db_settings.get("smtp_host"))
+            and (settings.smtp_from or db_settings.get("smtp_from"))
         ),
     }
 

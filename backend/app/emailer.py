@@ -1,24 +1,27 @@
 from __future__ import annotations
 
-import os
 import smtplib
 from email.message import EmailMessage
 from html import escape
 from typing import Iterable
 
+from loguru import logger
 from sqlalchemy.orm import Session
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+
+from .config import settings
 
 
 def _get_smtp_settings(db: Session | None = None) -> dict:
     """Return merged SMTP settings: env vars override DB settings."""
     from .settings import get_settings
 
-    host = os.getenv("SMTP_HOST", "")
-    port = int(os.getenv("SMTP_PORT", "587"))
-    user = os.getenv("SMTP_USER")
-    password = os.getenv("SMTP_PASSWORD")
-    sender = os.getenv("SMTP_FROM", user or "")
-    use_tls = os.getenv("SMTP_TLS", "true").lower() in {"1", "true", "yes", "on"}
+    host = settings.smtp_host
+    port = settings.smtp_port
+    user = settings.smtp_user
+    password = settings.smtp_password
+    sender = settings.smtp_from or (user or "")
+    use_tls = settings.smtp_tls
 
     if not host or not user or not sender:
         from .database import SessionLocal
@@ -32,7 +35,7 @@ def _get_smtp_settings(db: Session | None = None) -> dict:
             user = user or s.get("smtp_user")
             password = password or s.get("smtp_password")
             sender = sender or s.get("smtp_from", "")
-            if not os.getenv("SMTP_HOST"):
+            if not settings.smtp_host:
                 use_tls = bool(s.get("smtp_tls", True))
         finally:
             if owns_session:
@@ -56,6 +59,22 @@ def parse_recipients(raw: str | Iterable[str] | None) -> list[str]:
     return [p.strip() for p in parts if p and p.strip()]
 
 
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=30),
+    retry=retry_if_exception_type((smtplib.SMTPException, OSError, TimeoutError)),
+    reraise=True,
+)
+def _send_email_smtp(msg: EmailMessage, smtp_settings: dict) -> None:
+    """Send email via SMTP with automatic retry on transient failures."""
+    with smtplib.SMTP(smtp_settings["host"], smtp_settings["port"], timeout=20) as smtp:
+        if smtp_settings["use_tls"]:
+            smtp.starttls()
+        if smtp_settings["user"] and smtp_settings["password"]:
+            smtp.login(smtp_settings["user"], smtp_settings["password"])
+        smtp.send_message(msg)
+
+
 def send_email(subject: str, recipients: list[str], text: str, html: str | None = None, db: Session | None = None) -> dict:
     if not recipients:
         return {"sent": False, "reason": "No hay destinatarios configurados."}
@@ -72,20 +91,20 @@ def send_email(subject: str, recipients: list[str], text: str, html: str | None 
     if html:
         msg.add_alternative(html, subtype="html")
 
-    with smtplib.SMTP(s["host"], s["port"], timeout=20) as smtp:
-        if s["use_tls"]:
-            smtp.starttls()
-        if s["user"] and s["password"]:
-            smtp.login(s["user"], s["password"])
-        smtp.send_message(msg)
-    return {"sent": True, "recipients": recipients}
+    try:
+        _send_email_smtp(msg, s)
+        logger.info("Email sent to {} recipients", len(recipients))
+        return {"sent": True, "recipients": recipients}
+    except Exception as exc:
+        logger.error("Failed to send email after retries: {}", exc)
+        return {"sent": False, "reason": str(exc)}
 
 
 def alert_email_body(alerts: list[dict], base_url: str = "") -> tuple[str, str]:
     from datetime import datetime
 
     if not base_url:
-        base_url = os.getenv("APP_PUBLIC_URL", "")
+        base_url = settings.app_public_url
 
     # --- KPIs ---------------------------------------------------------------
     critical_count = sum(1 for a in alerts if a.get("presupuesto", {}).get("prioridad_calculada") == "Crítico")
@@ -117,7 +136,6 @@ def alert_email_body(alerts: list[dict], base_url: str = "") -> tuple[str, str]:
         tipo = escape(str(a.get("tipo", "")))
         prioridad = p.get("prioridad_calculada", "")
 
-        # Presupuesto cell (with link if base_url)
         if base_url and pres_id:
             pres_link = f'<a href="{base_url}/presupuestos/{pres_id}" style="color:#2563eb;text-decoration:none;font-weight:600">{num}</a>'
         else:
@@ -132,7 +150,6 @@ def alert_email_body(alerts: list[dict], base_url: str = "") -> tuple[str, str]:
             f'</tr>'
         )
 
-    # --- Footer CTA ---------------------------------------------------------
     footer_cta = ""
     if base_url:
         footer_cta = (
@@ -144,7 +161,6 @@ def alert_email_body(alerts: list[dict], base_url: str = "") -> tuple[str, str]:
 
     now_str = datetime.now().strftime("%d/%m/%Y %H:%M")
 
-    # --- Plain text fallback ------------------------------------------------
     text_lines = ["Avisos activos de PresuControl", ""]
     for a in alerts:
         p = a.get("presupuesto", {})
@@ -159,7 +175,6 @@ def alert_email_body(alerts: list[dict], base_url: str = "") -> tuple[str, str]:
 </head>
 <body style="margin:0;padding:0;background:#f9fafb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif">
 
-<!-- Header -->
 <div style="background:#1c1917;padding:24px 32px;text-align:center">
   <div style="display:inline-block;background:#fff;border-radius:6px;padding:6px 16px;margin-bottom:12px">
     <span style="font-size:18px;font-weight:800;color:#1c1917;letter-spacing:-0.5px">Presu</span><span style="font-size:18px;font-weight:800;color:#dc2626">Control</span>
@@ -168,7 +183,6 @@ def alert_email_body(alerts: list[dict], base_url: str = "") -> tuple[str, str]:
   <p style="margin:6px 0 0;font-size:13px;color:#a8a29e">{now_str}</p>
 </div>
 
-<!-- KPI cards -->
 <table width="100%" style="max-width:560px;margin:24px auto;border-collapse:collapse">
   <tr>
     <td style="padding:16px;background:#fff;border-radius:10px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.1);margin-bottom:12px">
@@ -186,7 +200,6 @@ def alert_email_body(alerts: list[dict], base_url: str = "") -> tuple[str, str]:
   </tr>
 </table>
 
-<!-- Table -->
 <div style="max-width:560px;margin:0 auto 24px">
   <table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;border-collapse:collapse;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.1)">
     <thead>
@@ -201,10 +214,8 @@ def alert_email_body(alerts: list[dict], base_url: str = "") -> tuple[str, str]:
   </table>
 </div>
 
-<!-- CTA -->
 {footer_cta}
 
-<!-- Footer -->
 <p style="text-align:center;font-size:11px;color:#9ca3af;max-width:560px;margin:0 auto 24px">
   No respondas a este email · PresuControl · Automatizado
 </p>
