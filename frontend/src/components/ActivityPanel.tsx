@@ -24,7 +24,7 @@ export function ActivityPanel({ open, onClose, isAdmin }: { open: boolean; onClo
     try {
       const res = await api.get<ActivityItem[]>('/logs/actividad?limit=15')
       setItems(res || [])
-    } catch {}
+    } catch { /* noop */ }
     setLoading(false)
   }
 

@@ -7,7 +7,6 @@ import {
   Table2, UploadCloud, UserCheck,
 } from 'lucide-react'
 import { isSystemAdmin, useAuth } from '../utils/auth'
-import { type SidebarCounters } from '../utils/api'
 import { useToast } from '../utils/toast'
 import { useSidebarCounters } from '../utils/useQueries'
 import { KeyboardShortcutsModal, useKeyboardShortcuts } from './KeyboardShortcuts'

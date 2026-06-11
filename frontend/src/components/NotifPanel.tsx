@@ -14,7 +14,7 @@ export function NotifPanel({ open, onClose }: { open: boolean; onClose: () => vo
   const unread = data.filter(n => !n.leida).length
 
   async function markRead(id: number) {
-    try { await api.post(`/notificaciones/${id}/leer`, {}); reload() } catch {}
+    try { await api.post(`/notificaciones/${id}/leer`, {}); reload() } catch { /* noop */ }
   }
 
   return (
@@ -29,7 +29,7 @@ export function NotifPanel({ open, onClose }: { open: boolean; onClose: () => vo
             </div>
             <div className="flex items-center gap-2">
               {unread > 0 && (
-                <button onClick={async () => { try { await api.post('/notificaciones/marcar-todas-leidas', {}); reload() } catch {} }} className="text-xs text-brand hover:underline">
+                <button onClick={async () => { try { await api.post('/notificaciones/marcar-todas-leidas', {}); reload() } catch { /* noop */ } }} className="text-xs text-brand hover:underline">
                   Marcar todas
                 </button>
               )}

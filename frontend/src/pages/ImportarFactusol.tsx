@@ -71,7 +71,6 @@ export function ImportarFactusol() {
   const [result, setResult] = useState<ImportResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [step, setStep] = useState<'upload' | 'preview' | 'result'>('upload')
-  const [selectedNums, setSelectedNums] = useState<Set<string>>(new Set())
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
@@ -94,7 +93,6 @@ export function ImportarFactusol() {
       const res = await api.post<Preview>(`/import/preview?mode=${mode}`, fd)
       setPreview(res)
       setStep('preview')
-      setSelectedNums(new Set())
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Error en simulación')
     } finally {
@@ -136,17 +134,7 @@ export function ImportarFactusol() {
     setFile(null)
     setPreview(null)
     setResult(null)
-    setSelectedNums(new Set())
     setStep('upload')
-  }
-
-  const toggleNum = (num: string) => {
-    setSelectedNums((prev) => {
-      const next = new Set(prev)
-      if (next.has(num)) next.delete(num)
-      else next.add(num)
-      return next
-    })
   }
 
   return (

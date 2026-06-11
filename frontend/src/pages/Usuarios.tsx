@@ -13,7 +13,7 @@ type ConfirmModal = { type: 'deactivate' | 'reset'; userId: number; userName: st
 export function Usuarios() {
   const toast = useToast()
   const queryClient = useQueryClient()
-  const { data, isLoading, error, refetch } = useUsuarios()
+  const { data, isLoading, error } = useUsuarios()
   const reload = () => queryClient.invalidateQueries({ queryKey: queryKeys.usuarios })
   const [search, setSearch] = useState('')
   const [filterRol, setFilterRol] = useState<'all' | 'admin' | 'gestion'>('all')
@@ -148,12 +148,6 @@ export function Usuarios() {
     } catch (e) { setCreateError(e instanceof Error ? e.message : 'Error al crear usuario') }
     finally { setCreating(false) }
   }
-
-  const resetUserName = confirmModal?.type === 'reset'
-    ? (data?.find(u => u.id === confirmModal.userId)?.nombre ?? '')
-    : (confirmModal?.type === 'deactivate'
-      ? (data?.find(u => u.id === confirmModal.userId)?.nombre ?? '')
-      : '')
 
   return <>
     <PageHeader

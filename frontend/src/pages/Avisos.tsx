@@ -15,10 +15,10 @@ export function Avisos() {
   const { data: historyData } = useData<AlertHistory[]>(() => api.get('/avisos/historial'), [])
   const [tab, setTab] = useState<'activos' | 'historial'>('activos')
   const [msg, setMsg] = useState<string | null>(null)
-  const [confirmSend, setConfirmSend] = useState(false)
   async function sendDigest() {
     setMsg(null)
     try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const res = await api.post<any>('/avisos/email-digest', {})
       setMsg(res.sent ? `Email enviado con ${res.alerts} avisos.` : `No enviado: ${res.reason || 'sin detalle'}`)
     } catch (e) { setMsg(e instanceof Error ? e.message : String(e)) }
@@ -26,6 +26,7 @@ export function Avisos() {
   async function runAutomatic() {
     setMsg(null)
     try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const res = await api.post<any>('/avisos/run-automatic', {})
       setMsg(res.active ? 'Revisión automática ejecutada manualmente.' : `No ejecutado: ${res.reason}`)
       reload()
@@ -34,6 +35,7 @@ export function Avisos() {
   async function escalateNow() {
     setMsg(null)
     try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const res = await api.post<any>('/avisos/escalar-ahora', {})
       setMsg(res.count ? `Escalado ejecutado: ${res.count} avisos.` : `Sin escalados enviados: ${res.reason || 'no hay avisos que cumplan umbral'}`)
       reload()

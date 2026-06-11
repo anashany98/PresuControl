@@ -1,10 +1,9 @@
 import { useState } from 'react'
-import { Bell, BellOff, BellRing, Check, CheckCheck } from 'lucide-react'
+import { BellRing, Check, CheckCheck } from 'lucide-react'
 import { PageHeader } from '../components/PageHeader'
 import { Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { SkeletonCard } from '../components/Skeleton'
-import { EmptyState } from '../components/EmptyState'
 import { api, fmtDate } from '../utils/api'
 
 type Notificacion = {

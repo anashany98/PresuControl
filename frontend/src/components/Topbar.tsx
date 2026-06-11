@@ -1,7 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { Activity, Bell, ChevronDown, Gauge, LogOut, Menu, Moon, Search, Settings, UserCheck, X } from 'lucide-react'
 import { type FormEvent, useRef, useState, useEffect } from 'react'
-import { isSystemAdmin, useAuth } from '../utils/auth'
+import { useAuth } from '../utils/auth'
 import type { NavSection } from './Sidebar'
 
 interface Props {
@@ -80,7 +80,6 @@ function NavDropdown({ section, counters }: { section: NavSection; counters: Rec
 export function Topbar({ sections, counters, onMenuClick, onNotifClick, onActivityClick, isAdmin }: Props) {
   const [q, setQ] = useState('')
   const [userMenuOpen, setUserMenuOpen] = useState(false)
-  const userMenuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     function handleKey(e: KeyboardEvent) { if (e.key === 'Escape') setUserMenuOpen(false) }

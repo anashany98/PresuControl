@@ -12,7 +12,7 @@ const MONTH_NAMES: Record<string, string> = {
 }
 
 function shortMonth(ym: string): string {
-  const [y, m] = ym.split('-')
+  const [, m] = ym.split('-')
   return MONTH_NAMES[m] || m
 }
 

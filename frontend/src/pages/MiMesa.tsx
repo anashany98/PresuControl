@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { BriefcaseBusiness, ChevronRight, RefreshCw } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { PageHeader } from '../components/PageHeader'
@@ -29,14 +28,13 @@ function CountdownTimer({ dateStr }: { dateStr: string | null | undefined }) {
 }
 
 function SwipeableCard({ item }: { item: Presupuesto }) {
-  const [swiping, setSwiping] = useState(false)
   const priorityClass = item.prioridad_calculada === 'Crítico' || item.prioridad_calculada === 'Rojo' ? 'priority-rojo'
     : item.prioridad_calculada === 'Naranja' ? 'priority-naranja'
     : item.prioridad_calculada === 'Amarillo' ? 'priority-amarillo'
     : item.prioridad_calculada === 'Verde' ? 'priority-verde' : ''
 
   return (
-    <Link to={`/presupuestos/${item.id}`} className={`mobile-card swipeable-card ${swiping ? 'swiping' : ''} ${priorityClass}`}
+    <Link to={`/presupuestos/${item.id}`} className={`mobile-card swipeable-card ${priorityClass}`}
       style={{ borderLeftColor: priorityClass === 'priority-rojo' ? '#ef4444' : priorityClass === 'priority-naranja' ? '#f97316' : priorityClass === 'priority-amarillo' ? '#eab308' : priorityClass === 'priority-verde' ? '#22c55e' : '#e5e7eb' }}
     >
       <div className="mobile-card-header">

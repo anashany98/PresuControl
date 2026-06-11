@@ -1593,7 +1593,7 @@ def export_logs_emails(request: Request, db: Session = Depends(get_db)):
     require_system_manager(request)
     rows = db.query(EmailNotificationLog).order_by(desc(EmailNotificationLog.creado_en)).limit(5000).all()
     df = pd.DataFrame([{
-        "Fecha": r.creado_en, "Presupuesto ID": r.presupuesto_id, "Tipo": r.tipo, "Estado": r.status,
+        "Fecha": _strip_tz(r.creado_en), "Presupuesto ID": r.presupuesto_id, "Tipo": r.tipo, "Estado": r.status,
         "Destinatarios": r.sent_to, "Nivel": r.escalation_level, "Error": r.error, "Fingerprint": r.fingerprint
     } for r in rows])
     output = io.BytesIO()
@@ -1608,7 +1608,7 @@ def export_logs_actividad(request: Request, db: Session = Depends(get_db)):
     require_system_manager(request)
     rows = db.query(HistorialCambio).order_by(desc(HistorialCambio.creado_en)).limit(10000).all()
     df = pd.DataFrame([{
-        "Fecha": r.creado_en, "Presupuesto ID": r.presupuesto_id, "Campo": r.campo, "Descripción": r.descripcion,
+        "Fecha": _strip_tz(r.creado_en), "Presupuesto ID": r.presupuesto_id, "Campo": r.campo, "Descripción": r.descripcion,
         "Valor anterior": r.valor_anterior, "Valor nuevo": r.valor_nuevo, "Usuario": r.usuario_nombre or r.nombre_opcional, "Email": r.usuario_email
     } for r in rows])
     output = io.BytesIO()
@@ -1960,6 +1960,13 @@ def export_reports(request: Request, db: Session = Depends(get_db)):
     return StreamingResponse(output, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": f"attachment; filename={filename}"})
 
 
+def _strip_tz(val: Any) -> Any:
+    """Strip timezone from datetime objects for Excel compatibility."""
+    if isinstance(val, datetime) and val.tzinfo is not None:
+        return val.replace(tzinfo=None)
+    return val
+
+
 def prepare_export_rows(rows: list[Presupuesto]) -> list[dict[str, Any]]:
     return [{
         "Nº presupuesto FactuSOL": r.numero_presupuesto,
@@ -1988,7 +1995,7 @@ def prepare_export_rows(rows: list[Presupuesto]) -> list[dict[str, Any]]:
         "Días parado": r.dias_parado,
         "Prioridad": r.prioridad_calculada,
         "Incidencia": "Sí" if r.incidencia else "No",
-        "Última actualización": r.fecha_ultima_actualizacion,
+        "Última actualización": _strip_tz(r.fecha_ultima_actualizacion),
         "version": r.version,
     } for r in rows]
 
@@ -2711,7 +2718,7 @@ def export_presupuestos_excel(
         "Días Parado": r.dias_parado,
         "Observaciones": r.observaciones,
         "Archivado": "Sí" if r.archivado else "No",
-        "Última Actualización": r.fecha_ultima_actualizacion,
+        "Última Actualización": _strip_tz(r.fecha_ultima_actualizacion),
     } for r in rows])
     
     output = io.BytesIO()

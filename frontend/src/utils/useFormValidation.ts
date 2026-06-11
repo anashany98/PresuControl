@@ -11,6 +11,7 @@ export type ValidationErrors = Record<string, string | null>
 export function useFormValidation(rules: ValidationRule[]) {
   const [errors, setErrors] = useState<ValidationErrors>({})
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const validateField = useCallback((field: string, value: any, allValues?: any) => {
     const rule = rules.find(r => r.field === field)
     if (!rule) return null
@@ -19,6 +20,7 @@ export function useFormValidation(rules: ValidationRule[]) {
     return error
   }, [rules])
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const validateAll = useCallback((values: any): boolean => {
     const newErrors: ValidationErrors = {}
     let valid = true

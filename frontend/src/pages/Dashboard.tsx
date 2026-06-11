@@ -16,7 +16,6 @@ import { DashboardTabs, type DashboardTab } from '../components/DashboardTabs'
 import { BudgetRowList } from '../components/BudgetRow'
 import { AtAGlance } from '../components/AtAGlance'
 import { DashboardSkeleton } from '../components/DashboardSkeleton'
-import type { DashboardPayload } from '../utils/dashboard'
 
 type DashboardView = 'normal' | 'ejecutivo'
 

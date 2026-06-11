@@ -2,7 +2,7 @@ import { useState, type ReactNode, useRef, useEffect, useCallback, useMemo } fro
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { PageHeader } from '../components/PageHeader'
 import { SkeletonCard } from '../components/Skeleton'
-import { api, ESTADOS, euro, fmtDate, isoDate, type Presupuesto } from '../utils/api'
+import { api, ESTADOS, isoDate, type Presupuesto } from '../utils/api'
 import { useMetadataOptions } from '../utils/useMetadataOptions'
 import { useAuth } from '../utils/auth'
 import { useSearchParams } from 'react-router-dom'
@@ -16,7 +16,6 @@ import { KanbanCard } from '../components/KanbanCard'
 // Boot-time fallback. Live value comes from useMetadataOptions().estados
 // (A-01). The hook always returns the fallback while `/metadata/options`
 // is loading, so columns are never empty.
-const FALLBACK_COLUMNS: string[] = ESTADOS.filter(s => s !== 'Pendiente de enviar' && s !== 'Borrador')
 
 type KanbanPayload = {
   action: string
@@ -146,10 +145,9 @@ function VirtualizedColumn({ columnData, columns, columnIndex, focusId, focusedC
 
 export function Kanban() {
   const [params] = useSearchParams()
-  const [dragId, setDragId] = useState<number | null>(null)
+  const [, setDragId] = useState<number | null>(null)
   const [dragOverCol, setDragOverCol] = useState<string | null>(null)
   const [savingId, setSavingId] = useState<number | null>(null)
-  const prevStateRef = useRef<{ presupuestoId: number; prevEstado: string; prevVersion: number } | null>(null)
   const [target, setTarget] = useState<{ presupuesto: Presupuesto; status: string } | null>(null)
   const [pedidoPanel, setPedidoPanel] = useState<Presupuesto | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
@@ -167,7 +165,7 @@ export function Kanban() {
   )
 
   const [columnData, setColumnData] = useState<Record<string, Presupuesto[]>>({})
-  const [columnTotals, setColumnTotals] = useState<Record<string, number>>({})
+  const [, setColumnTotals] = useState<Record<string, number>>({})
   const [focusedCard, setFocusedCard] = useState<{ col: string; index: number } | null>(null)
   const [search, setSearch] = useState('')
   const [gestorFilter, setGestorFilter] = useState('')
@@ -210,7 +208,7 @@ export function Kanban() {
         ...prev,
         [col]: [...(prev[col] || []), ...res.items],
       }))
-    } catch (e) {
+    } catch {
       toast.error('Error al cargar más presupuestos')
     }
   }, [columnData])
@@ -273,7 +271,7 @@ export function Kanban() {
     ]
     const cleaned = { ...payload }
     for (const f of dateFields) {
-      if ((cleaned as any)[f] === '') (cleaned as any)[f] = null
+      if ((cleaned as Record<string, unknown>)[f] === '') (cleaned as Record<string, unknown>)[f] = null
     }
     try {
       if (cleaned.action === 'direct_status') {
@@ -380,7 +378,16 @@ export function Kanban() {
         }
       } else if (e.key === 'ArrowRight' || (e.key === 'Tab' && !e.shiftKey)) {
         e.preventDefault()
-        if (colIndex < columns.length - 1) {
+        if (e.shiftKey) {
+          if (colIndex < columns.length - 1) {
+            const card = colCards[focusedCard.index]
+            if (card) {
+              const nextCol = columns[colIndex + 1]
+              setTarget({ presupuesto: card, status: nextCol })
+              setFocusedCard(null)
+            }
+          }
+        } else if (colIndex < columns.length - 1) {
           const nextCol = columns[colIndex + 1]
           const nextCards = columnData[nextCol] || []
           const newIndex = Math.min(focusedCard.index, nextCards.length - 1)
@@ -390,32 +397,21 @@ export function Kanban() {
         }
       } else if (e.key === 'ArrowLeft' || (e.key === 'Tab' && e.shiftKey)) {
         e.preventDefault()
-        if (colIndex > 0) {
+        if (e.shiftKey) {
+          if (colIndex > 0) {
+            const card = colCards[focusedCard.index]
+            if (card) {
+              const prevCol = columns[colIndex - 1]
+              setTarget({ presupuesto: card, status: prevCol })
+              setFocusedCard(null)
+            }
+          }
+        } else if (colIndex > 0) {
           const prevCol = columns[colIndex - 1]
           const prevCards = columnData[prevCol] || []
           const newIndex = Math.min(focusedCard.index, prevCards.length - 1)
           if (prevCards.length > 0) {
             setFocusedCard({ col: prevCol, index: Math.max(0, newIndex) })
-          }
-        }
-      } else if (e.shiftKey && e.key === 'ArrowRight') {
-        e.preventDefault()
-        if (colIndex < columns.length - 1) {
-          const card = colCards[focusedCard.index]
-          if (card) {
-            const nextCol = columns[colIndex + 1]
-            setTarget({ presupuesto: card, status: nextCol })
-            setFocusedCard(null)
-          }
-        }
-      } else if (e.shiftKey && e.key === 'ArrowLeft') {
-        e.preventDefault()
-        if (colIndex > 0) {
-          const card = colCards[focusedCard.index]
-          if (card) {
-            const prevCol = columns[colIndex - 1]
-            setTarget({ presupuesto: card, status: prevCol })
-            setFocusedCard(null)
           }
         }
       } else if (e.key === 'Escape') {

@@ -39,7 +39,7 @@ export function ProveedorList({ presupuestoId, presupuestoImporte }: { presupues
 
   useEffect(() => {
     if (showAdd) {
-      api.getProveedores().then(setAllProveedores).catch(e => toast.error('Error cargando proveedores'))
+      api.getProveedores().then(setAllProveedores).catch(_e => toast.error('Error cargando proveedores'))
     }
   }, [showAdd])
 

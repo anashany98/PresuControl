@@ -34,7 +34,7 @@ async function downloadExcel(toastFn: (msg: string) => void) {
     a.click()
     URL.revokeObjectURL(url)
     toastFn('Descarga iniciada')
-  } catch (e) {
+  } catch {
     toastFn('Error exportando')
   }
 }
@@ -145,7 +145,7 @@ function TrendChart({ title, data, color }: { title: string; data: { name: strin
   )
 }
 
-function BarHChart({ title, data, icon: Icon }: { title: string; data: { name: string; value: number }[]; icon: React.ComponentType<{ size?: number }> }) {
+function BarHChart({ title, data, icon: _Icon }: { title: string; data: { name: string; value: number }[]; icon: React.ComponentType<{ size?: number }> }) {
   const items = [...data].sort((a, b) => b.value - a.value).slice(0, 10)
   if (items.length === 0) return null
   return (

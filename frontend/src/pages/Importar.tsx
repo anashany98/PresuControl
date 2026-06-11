@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react'
-import { AlertTriangle, ArrowRight, CheckCircle2, Columns3, FileSearch, Info, Table, UploadCloud, X, XCircle } from 'lucide-react'
+import { useState } from 'react'
+import { AlertTriangle, ArrowRight, CheckCircle2, Columns3, FileSearch, Info, Table, UploadCloud } from 'lucide-react'
 import { PageHeader } from '../components/PageHeader'
 import { api } from '../utils/api'
 import { Modal } from '../components/Modal'
@@ -29,8 +29,8 @@ export function Importar() {
   const [selectedCols, setSelectedCols] = useState<Set<string>>(new Set())
   const [columnMapping, setColumnMapping] = useState<Record<string, string>>({})
   const [fieldLabels, setFieldLabels] = useState<Record<string, string>>({})
-  const [columnAliases, setColumnAliases] = useState<Record<string, string>>({})
-  const [fileHeaders, setFileHeaders] = useState<string[]>([])
+  const [, setColumnAliases] = useState<Record<string, string>>({})
+  const [, setFileHeaders] = useState<string[]>([])
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const toast = useToast()
@@ -99,6 +99,7 @@ export function Importar() {
     if (Object.keys(columnMapping).length > 0) fd.append('column_mapping', JSON.stringify(columnMapping))
     setError(null); setMessage(null)
     try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const result = await api.post<any>(`${path}?mode=${mode}`, fd)
       if (path.includes('preview')) {
         setPreview(result)

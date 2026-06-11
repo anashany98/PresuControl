@@ -122,7 +122,7 @@ export function Hoy() {
       })
       setMsg('✓ Tarea completada')
       setTimeout(() => setMsg(null), 3000)
-    } catch (e) {
+    } catch {
       setDone(d => { const n = new Set(d); n.delete(p.id); return n })
       toast.error('Error al marcar como hecho')
     }

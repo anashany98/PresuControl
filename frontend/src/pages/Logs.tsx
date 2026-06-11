@@ -11,7 +11,6 @@ const PAGE_SIZES = [25, 50, 100] as const
 type PageSize = typeof PAGE_SIZES[number]
 
 const TIPO_OPTIONS = ['recordatorio', 'aprobacion', 'vencimiento', 'escalado', 'estado']
-const STATUS_OPTIONS = ['sent', 'failed', 'skipped', 'pending']
 
 const BADGE_COLORS: Record<string, string> = {
   sent: 'badge-success',

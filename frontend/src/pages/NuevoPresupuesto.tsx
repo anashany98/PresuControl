@@ -94,7 +94,7 @@ export function NuevoPresupuesto() {
     try {
       const dateFields = ['fecha_envio_cliente', 'fecha_aceptacion', 'fecha_pedido_proveedor', 'plazo_proveedor', 'fecha_prevista_entrega', 'fecha_limite_siguiente_accion', 'fecha_cancelacion_rechazo', 'fecha_medicion', 'fecha_recepcion_mercancia', 'plazo_confeccion', 'fecha_entrega_cliente']
       const cleaned = { ...form }
-      for (const f of dateFields) { if ((cleaned as any)[f] === '') (cleaned as any)[f] = null }
+      for (const f of dateFields) { if ((cleaned as Record<string, unknown>)[f] === '') (cleaned as Record<string, unknown>)[f] = null }
       const created = await api.post<Presupuesto>('/presupuestos', cleaned)
       navigate(`/presupuestos/${created.id}`)
       toast.success('Presupuesto creado correctamente')

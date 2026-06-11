@@ -140,7 +140,7 @@ export function DetallePresupuesto() {
     try {
       const dateFields = ['plazo_proveedor', 'fecha_prevista_entrega', 'fecha_envio_cliente', 'fecha_aceptacion', 'fecha_pedido_proveedor', 'fecha_limite_siguiente_accion', 'fecha_cancelacion_rechazo']
       const cleaned = { ...data }
-      for (const f of dateFields) { if ((cleaned as any)[f] === '') (cleaned as any)[f] = null }
+      for (const f of dateFields) { if ((cleaned as Record<string, unknown>)[f] === '') (cleaned as Record<string, unknown>)[f] = null }
       const updated = await api.patch<Presupuesto>(`/presupuestos/${id}`, { ...cleaned, expected_version: cleaned.version })
       setData(updated); reload(); refreshSidebar()
       toast.success('Presupuesto guardado')
@@ -158,7 +158,7 @@ export function DetallePresupuesto() {
     try {
       const dateFields = ['plazo_proveedor', 'fecha_prevista_entrega', 'fecha_envio_cliente', 'fecha_aceptacion', 'fecha_pedido_proveedor', 'fecha_limite_siguiente_accion', 'fecha_cancelacion_rechazo', 'fecha_medicion', 'fecha_recepcion_mercancia', 'plazo_confeccion', 'fecha_entrega_cliente']
       const cleaned = { ...payload }
-      for (const f of dateFields) { if ((cleaned as any)[f] === '') (cleaned as any)[f] = null }
+      for (const f of dateFields) { if ((cleaned as Record<string, unknown>)[f] === '') (cleaned as Record<string, unknown>)[f] = null }
       const updated = await api.post<Presupuesto>(`/presupuestos/${id}/quick-action`, { ...cleaned, expected_version: data.version })
       setData(updated); setQuickAction(null); reload(); refreshSidebar()
       toast.success('Acción aplicada')

@@ -5,7 +5,7 @@ import { PageHeader } from '../components/PageHeader'
 import { PriorityBadge, StateBadge } from '../components/Badges'
 import { SkeletonTable } from '../components/Skeleton'
 import { OptionInput } from '../components/OptionInput'
-import { ESTADOS, PRIORIDADES, api, euro, exportUrl, fmtDate, getAuthToken, API_URL, type PaginatedPresupuestos, type Presupuesto } from '../utils/api'
+import { ESTADOS, PRIORIDADES, api, euro, exportUrl, fmtDate, getAuthToken, type Presupuesto } from '../utils/api'
 import { usePresupuestosPage } from '../utils/useQueries'
 import { useMetadataOptions } from '../utils/useMetadataOptions'
 import { PedidoSummaryBadge } from '../components/PedidoSummary'
@@ -26,18 +26,17 @@ export function Presupuestos() {
 
   // Load user preferences from API (fallback to localStorage)
   useEffect(() => {
-    api.get<Record<string, any>>('/usuarios/me/preferencias')
+    api.get<Record<string, unknown>>('/usuarios/me/preferencias')
       .then(prefs => {
-        if (prefs.presupuestosColumns) setVisible(prefs.presupuestosColumns)
-        if (prefs.presupuestosCompact != null) setCompact(prefs.presupuestosCompact)
+        if (prefs.presupuestosColumns) setVisible(prefs.presupuestosColumns as string[])
+        if (prefs.presupuestosCompact != null) setCompact(prefs.presupuestosCompact as boolean)
       })
       .catch(() => {
-        // Fallback to localStorage
         try {
           const saved = localStorage.getItem('presupuestosColumns')
           if (saved) setVisible(JSON.parse(saved))
           setCompact(localStorage.getItem('presupuestosCompact') === 'true')
-        } catch {}
+        } catch { /* noop */ }
       })
       .finally(() => setPrefsLoaded(true))
   }, [])
@@ -51,7 +50,6 @@ export function Presupuestos() {
     localStorage.setItem('presupuestosCompact', String(compact))
   }, [visible, compact, prefsLoaded])
   const metadataOptions = useMetadataOptions()
-  const query = params.toString()
   // Build a stable object for the query key — strip internal pagination keys
   // that should not change the cached result (or do, for placeholderData).
   const { data, isLoading, error, refetch } = usePresupuestosPage(Object.fromEntries(params))

@@ -184,7 +184,7 @@ function StatusTile({ label, value, tone = 'neutral' }: { label: string; value: 
 
 export function Configuracion() {
   const queryClient = useQueryClient()
-  const { data, isLoading, error, refetch } = useSettings()
+  const { data, isLoading, error } = useSettings()
   const reload = () => queryClient.invalidateQueries({ queryKey: queryKeys.settings })
   const setData = (updated: SettingsType | ((prev: SettingsType | undefined) => SettingsType | undefined)) => {
     queryClient.setQueryData<SettingsType>(queryKeys.settings, (prev: SettingsType | undefined) => {
